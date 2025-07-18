@@ -45,6 +45,23 @@ ollama pull llama3.2:3b    # 백업 모델 (빠름)
 ```
 
 ### 3. 웹 애플리케이션 실행
+
+#### 🐳 Docker 실행 (권장)
+```bash
+# Docker Compose로 실행
+docker-compose up -d
+
+# 상태 확인
+docker-compose ps
+
+# 로그 확인
+docker-compose logs -f ai-debate-simulator
+
+# 중지
+docker-compose down
+```
+
+#### 🐍 Python 직접 실행
 ```bash
 # 서버 시작
 python3 start_server_simple.py
@@ -69,6 +86,11 @@ ai-debate-simulator/
 │   ├── debate_evaluator.py       # 평가 시스템
 │   ├── start_server_simple.py    # 서버 시작 스크립트
 │   └── requirements.txt          # 의존성 목록
+│
+├── 🐳 Docker
+│   ├── Dockerfile               # Docker 이미지 정의
+│   ├── docker-compose.yml       # Docker Compose 설정
+│   └── .env.sample              # 환경 변수 템플릿
 │
 ├── 📁 Documentation
 │   ├── README.md                 # 이 파일
@@ -184,6 +206,77 @@ AI들이 구조적이지 않고 친구와 대화하듯 자연스럽게 토론합
 - **qwen3:30b-a3b**: 기본 고성능 모델
 - **llama3.2:3b**: 빠른 백업 모델
 - **지원 형식**: Ollama 호환 모든 모델
+
+## 🐳 Docker 실행 가이드
+
+### 빠른 Docker 실행
+```bash
+# 1. 리포지토리 클론
+git clone https://github.com/hyoseop1231/ai-debate-simulator.git
+cd ai-debate-simulator
+
+# 2. 환경 설정 (선택사항)
+cp .env.sample .env
+
+# 3. Docker Compose 실행
+docker-compose up -d
+
+# 4. 브라우저 접속
+open http://localhost:8003
+```
+
+### Docker 관리 명령어
+```bash
+# 상태 확인
+docker-compose ps
+
+# 로그 확인
+docker-compose logs -f ai-debate-simulator
+
+# 재시작
+docker-compose restart
+
+# 중지 및 제거
+docker-compose down
+
+# 이미지 재빌드
+docker-compose build --no-cache
+```
+
+### Docker 환경 설정
+
+#### 환경 변수 (`.env` 파일)
+```bash
+# 애플리케이션 설정
+DEBATE_PORT=8003
+OLLAMA_API_URL=http://host.docker.internal:11434
+LOG_LEVEL=INFO
+
+# 성능 튜닝
+MAX_DEBATE_ROUNDS=5
+DEFAULT_MODEL=qwen3:30b-a3b
+CHUNK_SIZE=1
+```
+
+#### 호스트 Ollama 연결
+Docker 컨테이너에서 호스트의 Ollama 서버에 연결하기 위해 `host.docker.internal`을 사용합니다:
+```bash
+# 호스트에서 Ollama 실행
+ollama serve
+
+# Docker 컨테이너가 자동으로 연결
+```
+
+### 프로덕션 배포
+```bash
+# 프로덕션 환경 변수 설정
+export OLLAMA_API_URL=https://your-ollama-server.com
+export SECRET_KEY=your-production-secret-key
+export CORS_ORIGINS=https://your-domain.com
+
+# 스케일링 (여러 인스턴스)
+docker-compose up -d --scale ai-debate-simulator=3
+```
 
 ## 🔧 고급 설정
 
