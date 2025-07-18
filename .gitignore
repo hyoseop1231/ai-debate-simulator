@@ -1,0 +1,83 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+server.log
+enhanced_web_server.log
+final_web_server.log
+test_server.log
+web_server.log
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Backup files
+*.bak
+*.backup
+
+# Redundant/Legacy files (keep in repo but don't track changes)
+enhanced_web_app.py
+web_app.py
+demo_enhanced.py
+quick_start.py
+run_server.py
+open_browser.py
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local config
+.env
+.env.local
+config.local.py
+
+# Documentation build
+_build/
+site/
