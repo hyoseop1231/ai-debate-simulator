@@ -1,0 +1,289 @@
+# AI 토론 시뮬레이터 - 프로덕션 수준 Docker Compose
+version: '3.8'
+
+services:
+  # AI 토론 시뮬레이터 웹 애플리케이션
+  ai-debate-simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile.improved
+      target: production
+    container_name: ai-debate-simulator-prod
+    ports:
+      - "8003:8003"
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - HOST=0.0.0.0
+      - PORT=8003
+      - OLLAMA_API_URL=http://host.docker.internal:11434
+      - LOG_LEVEL=INFO
+      - METRICS_ENABLED=true
+      - CACHE_TTL_MINUTES=60
+      - MAX_CONCURRENT_DEBATES=50
+      - RATE_LIMIT_REQUESTS=5
+      - RATE_LIMIT_WINDOW=60
+    volumes:
+      - ./logs:/app/logs
+      - debate_cache:/app/cache
+    networks:
+      - debate-network
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+    
+    # 리소스 제한
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # 헬스체크
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # 로깅 설정
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 개발 환경 서비스
+  ai-debate-simulator-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.improved
+      target: development
+    container_name: ai-debate-simulator-dev
+    ports:
+      - "8004:8003"
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - HOT_RELOAD=true
+      - OLLAMA_API_URL=http://host.docker.internal:11434
+    volumes:
+      - ./:/app
+      - ./logs:/app/logs
+    networks:
+      - debate-network
+    profiles:
+      - development
+    restart: unless-stopped
+
+  # Redis 캐시 서버
+  redis:
+    image: redis:7-alpine
+    container_name: redis-cache
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - debate-network
+    restart: unless-stopped
+    
+    # 보안 설정
+    security_opt:
+      - no-new-privileges:true
+    
+    # 헬스체크
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+    # 로깅 설정
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL 데이터베이스 (선택적)
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres-db
+    environment:
+      - POSTGRES_DB=debate_db
+      - POSTGRES_USER=debate_user
+      - POSTGRES_PASSWORD=debate_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - debate-network
+    restart: unless-stopped
+    
+    # 보안 설정
+    security_opt:
+      - no-new-privileges:true
+    
+    # 헬스체크
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U debate_user -d debate_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+    # 로깅 설정
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Nginx 리버스 프록시 (프로덕션)
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./nginx/logs:/var/log/nginx
+    networks:
+      - debate-network
+    depends_on:
+      - ai-debate-simulator
+    restart: unless-stopped
+    profiles:
+      - production
+    
+    # 보안 설정
+    security_opt:
+      - no-new-privileges:true
+
+  # 모니터링 - Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    networks:
+      - debate-network
+    profiles:
+      - monitoring
+    restart: unless-stopped
+
+  # 모니터링 - Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - debate-network
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+    restart: unless-stopped
+
+  # 로그 수집 - ELK Stack (선택적)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - debate-network
+    profiles:
+      - logging
+    restart: unless-stopped
+
+  # Ollama LLM 서버 (선택적 - 호스트에서 실행 중이면 주석 처리)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-server
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    networks:
+      - debate-network
+    restart: unless-stopped
+    profiles:
+      - standalone
+    
+    # GPU 지원 (NVIDIA GPU 사용 시)
+    # runtime: nvidia
+    # environment:
+    #   - NVIDIA_VISIBLE_DEVICES=all
+    
+    # 헬스체크
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  debate-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  # 데이터 볼륨
+  redis_data:
+    driver: local
+  postgres_data:
+    driver: local
+  ollama_data:
+    driver: local
+  debate_cache:
+    driver: local
+  
+  # 모니터링 볼륨
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+
+# 개발 환경 실행: docker-compose --profile development up
+# 프로덕션 환경 실행: docker-compose --profile production up
+# 모니터링 포함: docker-compose --profile production --profile monitoring up
+# 전체 스택: docker-compose --profile production --profile monitoring --profile logging up

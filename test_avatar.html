@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 아바타 생성 테스트</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .avatar-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+        .avatar-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .avatar-card h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .avatar-image {
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+            width: 128px;
+            height: 128px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 AI 아바타 생성 테스트</h1>
+    <p>다양한 AI 에이전트의 픽셀아트 아바타를 생성해보세요!</p>
+    
+    <button onclick="generateTestAvatars()">아바타 생성하기</button>
+    <button onclick="clearAvatars()">초기화</button>
+    
+    <div class="avatar-container" id="avatarContainer"></div>
+
+    <script>
+        // 아바타 특징 정의 (main에서 복사)
+        const avatarTraits = {
+            angel: {
+                baseColor: '#FFD700',
+                secondaryColor: '#FFF8DC',
+                features: {
+                    expression: 'happy',
+                    halo: true,
+                    wings: true,
+                    glasses: false,
+                    horns: false,
+                    tail: false,
+                    bodyType: 'robe'
+                }
+            },
+            devil: {
+                baseColor: '#DC143C',
+                secondaryColor: '#8B0000',
+                features: {
+                    expression: 'mischievous',
+                    halo: false,
+                    wings: false,
+                    glasses: false,
+                    horns: true,
+                    tail: true,
+                    bodyType: 'casual'
+                }
+            },
+            writer: {
+                baseColor: '#4169E1',
+                secondaryColor: '#87CEEB',
+                features: {
+                    expression: 'thoughtful',
+                    halo: false,
+                    wings: false,
+                    glasses: true,
+                    horns: false,
+                    tail: false,
+                    bodyType: 'formal'
+                }
+            },
+            analyzer: {
+                baseColor: '#32CD32',
+                secondaryColor: '#90EE90',
+                features: {
+                    expression: 'focused',
+                    halo: false,
+                    wings: false,
+                    glasses: true,
+                    horns: false,
+                    tail: false,
+                    bodyType: 'formal'
+                }
+            },
+            searcher: {
+                baseColor: '#FF8C00',
+                secondaryColor: '#FFE4B5',
+                features: {
+                    expression: 'curious',
+                    halo: false,
+                    wings: false,
+                    glasses: false,
+                    horns: false,
+                    tail: false,
+                    bodyType: 'casual'
+                }
+            },
+            organizer: {
+                baseColor: '#9370DB',
+                secondaryColor: '#DDA0DD',
+                features: {
+                    expression: 'confident',
+                    halo: false,
+                    wings: false,
+                    glasses: false,
+                    horns: false,
+                    tail: false,
+                    bodyType: 'formal'
+                }
+            }
+        };
+
+        // 픽셀아트 생성 함수 (main에서 복사)
+        function generatePixelAvatar(agentName, agentRole, customPersona = null) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            
+            // 픽셀 단위
+            const pixelSize = 4;
+            
+            // 기본 색상 및 특징 가져오기
+            const traits = avatarTraits[agentRole] || avatarTraits.searcher;
+            const baseColor = traits.baseColor;
+            const secondaryColor = traits.secondaryColor;
+            const features = traits.features;
+            
+            // 커스텀 페르소나 기반 색상 변형
+            if (customPersona) {
+                if (customPersona.includes('열정') || customPersona.includes('뜨거운')) {
+                    traits.baseColor = '#FF6B6B';
+                } else if (customPersona.includes('차분') || customPersona.includes('냉철')) {
+                    traits.baseColor = '#4ECDC4';
+                } else if (customPersona.includes('지혜') || customPersona.includes('현명')) {
+                    traits.baseColor = '#95E1D3';
+                }
+            }
+            
+            // 배경 투명
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 픽셀 그리기 헬퍼 함수
+            function drawPixel(x, y, color) {
+                ctx.fillStyle = color;
+                ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+            }
+            
+            // 머리 그리기
+            const headPattern = [
+                [0,0,1,1,1,1,0,0],
+                [0,1,1,1,1,1,1,0],
+                [1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1],
+                [0,1,1,1,1,1,1,0],
+                [0,0,1,1,1,1,0,0]
+            ];
+            
+            // 머리 렌더링
+            for (let y = 0; y < headPattern.length; y++) {
+                for (let x = 0; x < headPattern[y].length; x++) {
+                    if (headPattern[y][x]) {
+                        drawPixel(x + 4, y + 2, baseColor);
+                    }
+                }
+            }
+            
+            // 눈 그리기
+            drawPixel(6, 5, '#000000');
+            drawPixel(9, 5, '#000000');
+            
+            // 표정에 따른 입 그리기
+            if (features.expression === 'happy') {
+                drawPixel(6, 7, '#000000');
+                drawPixel(7, 8, '#000000');
+                drawPixel(8, 8, '#000000');
+                drawPixel(9, 7, '#000000');
+            } else if (features.expression === 'mischievous') {
+                drawPixel(6, 7, '#000000');
+                drawPixel(7, 7, '#000000');
+                drawPixel(8, 7, '#000000');
+                drawPixel(9, 8, '#000000');
+            } else {
+                drawPixel(6, 7, '#000000');
+                drawPixel(7, 7, '#000000');
+                drawPixel(8, 7, '#000000');
+                drawPixel(9, 7, '#000000');
+            }
+            
+            // 특징별 추가 요소
+            if (features.halo) {
+                // 후광 그리기
+                for (let x = 5; x < 11; x++) {
+                    drawPixel(x, 0, '#FFFF00');
+                }
+            }
+            
+            if (features.horns) {
+                // 뿔 그리기
+                drawPixel(5, 1, secondaryColor);
+                drawPixel(4, 0, secondaryColor);
+                drawPixel(10, 1, secondaryColor);
+                drawPixel(11, 0, secondaryColor);
+            }
+            
+            if (features.glasses) {
+                // 안경 그리기
+                drawPixel(5, 5, '#333333');
+                drawPixel(6, 5, '#333333');
+                drawPixel(7, 5, '#333333');
+                drawPixel(8, 5, '#333333');
+                drawPixel(9, 5, '#333333');
+                drawPixel(10, 5, '#333333');
+            }
+            
+            // 몸통 그리기
+            const bodyPattern = [
+                [0,0,1,1,1,1,0,0],
+                [0,1,1,1,1,1,1,0],
+                [1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1]
+            ];
+            
+            for (let y = 0; y < bodyPattern.length; y++) {
+                for (let x = 0; x < bodyPattern[y].length; x++) {
+                    if (bodyPattern[y][x]) {
+                        drawPixel(x + 4, y + 10, secondaryColor);
+                    }
+                }
+            }
+            
+            if (features.wings) {
+                // 날개 그리기
+                for (let y = 10; y < 14; y++) {
+                    drawPixel(2, y, '#FFFFFF');
+                    drawPixel(3, y, '#FFFFFF');
+                    drawPixel(12, y, '#FFFFFF');
+                    drawPixel(13, y, '#FFFFFF');
+                }
+            }
+            
+            if (features.tail) {
+                // 꼬리 그리기
+                drawPixel(12, 14, secondaryColor);
+                drawPixel(13, 15, secondaryColor);
+                drawPixel(14, 15, secondaryColor);
+                drawPixel(15, 14, secondaryColor);
+            }
+            
+            // 추가 액세서리 (역할별)
+            if (agentRole === 'writer') {
+                // 펜 그리기
+                drawPixel(14, 12, '#000000');
+                drawPixel(15, 13, '#000000');
+                drawPixel(16, 14, '#FFD700');
+            } else if (agentRole === 'analyzer') {
+                // 돋보기 그리기
+                drawPixel(14, 11, '#000000');
+                drawPixel(15, 12, '#000000');
+                drawPixel(16, 13, '#000000');
+            }
+            
+            return canvas.toDataURL();
+        }
+
+        // 테스트 아바타 생성
+        function generateTestAvatars() {
+            const container = document.getElementById('avatarContainer');
+            container.innerHTML = '';
+            
+            const agents = [
+                { name: '희망천사', role: 'angel', persona: '긍정적이고 희망찬 메시지를 전달하는 천사' },
+                { name: '도전악마', role: 'devil', persona: '도전적이고 반박하는 악마' },
+                { name: '긍정작가', role: 'writer', persona: '창의적이고 지혜로운 작가' },
+                { name: '비판분석가', role: 'analyzer', persona: '냉철하고 분석적인 전문가' },
+                { name: '탐색자', role: 'searcher', persona: '호기심 많은 탐색자' },
+                { name: '진행자', role: 'organizer', persona: '차분하고 공정한 진행자' }
+            ];
+            
+            agents.forEach(agent => {
+                const avatarUrl = generatePixelAvatar(agent.name, agent.role, agent.persona);
+                
+                const card = document.createElement('div');
+                card.className = 'avatar-card';
+                card.innerHTML = `
+                    <h3>${agent.name}</h3>
+                    <img src="${avatarUrl}" alt="${agent.name}" class="avatar-image">
+                    <p><strong>역할:</strong> ${agent.role}</p>
+                    <p><strong>페르소나:</strong> ${agent.persona}</p>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+
+        function clearAvatars() {
+            document.getElementById('avatarContainer').innerHTML = '';
+        }
+
+        // 페이지 로드 시 자동 생성
+        window.onload = function() {
+            generateTestAvatars();
+        };
+    </script>
+</body>
+</html>

@@ -8,12 +8,15 @@
 
 ## 🌟 주요 특징
 
-### ✨ 2024년 최신 개선사항
-- **완전한 깜빡거림 제거**: 부드러운 실시간 스트리밍
+### ✨ 2024년 최신 개선사항 (v5.0)
+- **완전한 메시지 손실 방지**: thinking과 content 완벽 분리 처리
+- **지능형 응답 추출**: thinking 내용에서 실제 응답 자동 추출
+- **안정적인 스트리밍**: 백엔드 레벨에서 thinking 태그 사전 처리
 - **자연스러운 AI 대화**: 구조적이지 않은 친근한 톤
 - **글자 단위 타이핑**: 사람이 직접 타이핑하는 것 같은 자연스러운 효과
 - **사고 과정 시각화**: AI의 thinking 프로세스를 별도 아코디언으로 표시
 - **반응형 웹 UI**: 모든 기기에서 완벽한 사용 경험
+- **프로덕션 수준 Docker**: 멀티스테이지 빌드 및 보안 강화
 
 ### 🎯 핵심 기능
 - **다양한 토론 형식**: 대립형(MAD), 협력형, 경쟁형, 커스텀
@@ -80,25 +83,45 @@ http://localhost:8003
 ```
 ai-debate-simulator/
 ├── 🎯 Core Files
-│   ├── final_web_app.py          # 메인 웹 애플리케이션
-│   ├── debate_agent.py           # AI 에이전트 구현
+│   ├── final_web_app.py          # 메인 웹 애플리케이션 (안정화 버전)
+│   ├── final_web_app_improved.py # 🆕 프로덕션 수준 개선 버전
+│   ├── debate_agent.py           # AI 에이전트 구현 (thinking 분리 로직 포함)
 │   ├── debate_controller.py      # 토론 제어 시스템
 │   ├── debate_evaluator.py       # 평가 시스템
 │   ├── start_server_simple.py    # 서버 시작 스크립트
-│   └── requirements.txt          # 의존성 목록
+│   ├── requirements.txt          # 기본 의존성 목록
+│   └── requirements_improved.txt # 🆕 프로덕션 수준 의존성
 │
-├── 🐳 Docker
-│   ├── Dockerfile               # Docker 이미지 정의
-│   ├── docker-compose.yml       # Docker Compose 설정
-│   └── .env.sample              # 환경 변수 템플릿
+├── 🔧 Configuration
+│   ├── config/
+│   │   ├── settings.py           # 🆕 환경별 설정
+│   │   └── __init__.py
+│   ├── env_sample.txt            # 🆕 환경 변수 템플릿
+│   └── .env.sample               # 기본 환경 변수
 │
-├── 📁 Documentation
-│   ├── README.md                 # 이 파일
-│   ├── START_HERE.md            # 빠른 시작 가이드
-│   └── LICENSE                   # MIT 라이선스
+├── 🛡️ Security & Utils
+│   ├── utils/
+│   │   ├── security.py           # 🆕 보안 시스템
+│   │   ├── cache.py              # 🆕 캐싱 시스템
+│   │   ├── monitoring.py         # 🆕 모니터링 시스템
+│   │   └── __init__.py
 │
-└── 🧪 Testing
-    └── test_ollama.py           # Ollama 연결 테스트
+├── 🐳 Docker & Deployment
+│   ├── Dockerfile                # Docker 이미지 정의
+│   ├── Dockerfile.improved       # 🆕 프로덕션 수준 멀티스테이지 빌드
+│   ├── docker-compose.yml        # 기본 Docker Compose 설정
+│   └── docker-compose.improved.yml # 🆕 완전한 스택 구성
+│
+├── 🧪 Testing
+│   ├── test_ollama.py            # Ollama 연결 테스트
+│   ├── test_improved_system.py   # 🆕 통합 테스트
+│   └── test_avatar.html          # 🆕 아바타 생성 테스트
+│
+└── 📚 Documentation
+    ├── README.md                 # 이 파일
+    ├── IMPROVEMENT_GUIDE.md      # 🆕 완전한 개선 가이드
+    ├── START_HERE.md            # 빠른 시작 가이드
+    └── LICENSE                   # MIT 라이선스
 ```
 
 ## 🤖 AI 에이전트 시스템
@@ -209,7 +232,7 @@ AI들이 구조적이지 않고 친구와 대화하듯 자연스럽게 토론합
 
 ## 🐳 Docker 실행 가이드
 
-### 빠른 Docker 실행
+### 빠른 Docker 실행 (기본 버전)
 ```bash
 # 1. 리포지토리 클론
 git clone https://github.com/hyoseop1231/ai-debate-simulator.git
@@ -222,6 +245,24 @@ cp .env.sample .env
 docker-compose up -d
 
 # 4. 브라우저 접속
+open http://localhost:8003
+```
+
+### 🚀 프로덕션 수준 실행 (개선된 버전)
+```bash
+# 1. 개선된 Docker 환경 설정
+cp env_sample.txt .env.development
+
+# 2. 개발 환경 실행
+docker-compose -f docker-compose.improved.yml --profile development up -d
+
+# 3. 프로덕션 환경 실행
+docker-compose -f docker-compose.improved.yml --profile production up -d
+
+# 4. 모니터링 포함 실행
+docker-compose -f docker-compose.improved.yml --profile production --profile monitoring up -d
+
+# 5. 브라우저 접속
 open http://localhost:8003
 ```
 
@@ -307,8 +348,12 @@ self.model = "your-custom-model:latest"
 ### 주요 엔드포인트
 ```
 GET  /api/status           # 서버 상태 확인
+GET  /api/health           # 🆕 헬스체크 (개선된 버전)
+GET  /api/metrics          # 🆕 성능 메트릭
 GET  /api/models           # 사용 가능한 모델 목록  
+GET  /api/ollama/status    # 🆕 Ollama 서버 상태
 POST /api/debate/start     # 토론 시작
+POST /api/cache/clear      # 🆕 캐시 정리
 GET  /ws/{session_id}      # WebSocket 연결
 ```
 
@@ -375,11 +420,15 @@ python3 test_ollama.py
 
 ## 📈 성능 최적화
 
-### 최신 개선사항 (2024)
+### 최신 개선사항 (2024 v5.0)
+- **완전한 메시지 손실 방지**: thinking과 content 완벽 분리
+- **지능형 응답 추출**: thinking 내용에서 실제 응답 자동 추출
 - **90% DOM 업데이트 감소**: 청크 크기 최적화
 - **완전한 깜빡거림 제거**: 모든 애니메이션 효과 제거
 - **자연스러운 타이핑**: 글자 단위 스트리밍
 - **메모리 사용량 50% 감소**: 불필요한 처리 제거
+- **프로덕션 수준 보안**: 레이트 리미팅, 입력 검증, 에러 핸들링
+- **실시간 모니터링**: 성능 메트릭 및 헬스체크
 
 ### 권장 사양
 - **RAM**: 8GB+ (qwen3:30b-a3b 사용시)

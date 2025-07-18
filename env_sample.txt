@@ -1,0 +1,56 @@
+# AI 토론 시뮬레이터 - 환경 설정 템플릿
+# 이 파일을 복사하여 .env.development, .env.production 등으로 사용하세요
+
+# 환경 설정
+ENVIRONMENT=development  # development, staging, production
+DEBUG=true
+
+# 서버 설정
+HOST=127.0.0.1
+PORT=8003
+
+# 보안 설정
+ALLOWED_ORIGINS=["http://localhost:8003", "http://localhost:3000"]
+CORS_CREDENTIALS=true
+
+# 성능 설정
+MAX_CONCURRENT_DEBATES=10
+MAX_HISTORY_SIZE=50
+RESPONSE_TIMEOUT=30
+CLEANUP_INTERVAL=300
+
+# Ollama 설정
+OLLAMA_API_URL=http://localhost:11434
+OLLAMA_TIMEOUT=30
+OLLAMA_MAX_RETRIES=3
+
+# 캐싱 설정
+CACHE_TTL_MINUTES=30
+CACHE_MAX_SIZE=1000
+
+# 레이트 리미팅 설정 
+RATE_LIMIT_REQUESTS=10
+RATE_LIMIT_WINDOW=60
+
+# 로깅 설정
+LOG_LEVEL=INFO
+LOG_FILE=logs/app.log
+
+# 모니터링 설정
+METRICS_ENABLED=true
+HEALTH_CHECK_INTERVAL=30
+
+# 선택적 설정
+# Redis 캐시 (사용 시 주석 해제)
+# REDIS_URL=redis://localhost:6379
+
+# 데이터베이스 (사용 시 주석 해제)
+# DATABASE_URL=postgresql://user:password@localhost:5432/debate_db
+
+# 에러 트래킹 (사용 시 주석 해제)
+# SENTRY_DSN=https://your-sentry-dsn
+
+# 프로덕션 환경 추가 설정
+# SECRET_KEY=your-secret-key-here
+# SSL_CERT_PATH=/path/to/ssl/cert.pem
+# SSL_KEY_PATH=/path/to/ssl/key.pem

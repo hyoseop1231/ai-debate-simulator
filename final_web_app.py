@@ -6,10 +6,10 @@
 - 토론 형식별 동적 UI
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Optional
 import asyncio
 import json
@@ -18,6 +18,9 @@ from datetime import datetime
 import random
 import httpx
 import os
+import re
+import html
+import time
 
 from debate_agent import DebateAgent, AgentRole, DebateStance
 from debate_controller import DebateController, DebateConfig, DebateFormat
@@ -25,17 +28,77 @@ from debate_evaluator import DebateEvaluator
 
 app = FastAPI(title="AI 토론 시뮬레이터 Final", version="4.0")
 
-# CORS 설정
+# CORS 설정 (보안 강화)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:8003", "http://localhost:3000", "http://127.0.0.1:8003"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
+
+# 보안 헤더 미들웨어
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """보안 헤더 추가 및 메트릭 수집"""
+    start_time = time.time()
+    
+    try:
+        response = await call_next(request)
+        
+        # 보안 헤더 추가
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+        
+        # 메트릭 수집
+        metrics.record_request()
+        
+        return response
+        
+    except Exception as e:
+        metrics.record_error()
+        raise
 
 # 전역 상태
 active_debates = {}
+
+# 간단한 메트릭 시스템
+class SimpleMetrics:
+    def __init__(self):
+        self.total_debates = 0
+        self.total_requests = 0
+        self.total_errors = 0
+        self.start_time = time.time()
+        self.active_connections = 0
+    
+    def record_request(self):
+        self.total_requests += 1
+    
+    def record_error(self):
+        self.total_errors += 1
+    
+    def record_debate_start(self):
+        self.total_debates += 1
+    
+    def record_connection_change(self, change):
+        self.active_connections += change
+    
+    def get_stats(self):
+        uptime = time.time() - self.start_time
+        return {
+            "total_debates": self.total_debates,
+            "total_requests": self.total_requests,
+            "total_errors": self.total_errors,
+            "active_connections": self.active_connections,
+            "active_debates": len(active_debates),
+            "uptime_seconds": uptime,
+            "error_rate": self.total_errors / max(self.total_requests, 1)
+        }
+
+metrics = SimpleMetrics()
 
 # 환경 변수 설정
 OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
@@ -1019,6 +1082,7 @@ async def home():
         let messageQueue = [];
         let isTyping = false;
         let roundInProgress = false;
+        let pendingContentMessages = new Map(); // thinking이 완료되기 전까지 content 메시지 대기
         
         // Context7 연구 기반: 고급 thinking 태그 처리 시스템
         function processThinkingTags(text) {
@@ -1187,22 +1251,18 @@ async def home():
             });
         }
         
-        // 스트리밍 컨텐츠를 위한 즉시 업데이트 함수 (의도적 지연 효과)
+        // 스트리밍 컨텐츠를 위한 즉시 업데이트 함수 (텍스트 잘림 방지)
         function typewriterText(element, text) {
-            // 이전 컨텐츠와 비교
-            const previousText = element.dataset.previousText || '';
-            
-            if (text !== previousText) {
-                // 새로 추가된 부분만 찾기
-                const newPart = text.substring(previousText.length);
+            // 텍스트 잘림 방지: 전체 텍스트를 매번 렌더링
+            if (text && text.length > 0) {
+                // 마크다운 렌더링과 함께 전체 텍스트 표시
+                element.innerHTML = renderMarkdown(text);
                 
-                if (newPart) {
-                    // 깜빡거림 완전 제거: 받은 청크를 바로 추가
-                    element.textContent = text;
+                // 스크롤 조정
+                const chatContainer = document.getElementById('chat-container');
+                if (chatContainer) {
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
                 }
-                
-                // 이전 컨텐츠 업데이트
-                element.dataset.previousText = text;
             }
         }
         
@@ -2016,9 +2076,9 @@ async def home():
             
             const chatContainer = document.getElementById('chat-container');
             const round = data.round || currentRound;
-            const messageId = `${data.agent_name}-${round}-thinking`;
+            const messageId = data.message_id || `${data.agent_name}-${round}-thinking-${Date.now()}`;
             
-            // 이미 존재하는지 확인 (중복 방지) - 더 엄격하게 처리
+            // 이미 존재하는지 확인 (중복 방지) - 백엔드에서 전달받은 고유 ID 사용
             if (document.getElementById(messageId) || streamingMessages.has(messageId)) {
                 console.log(`🔄 Thinking 메시지 이미 존재: ${messageId}`);
                 return;
@@ -2070,16 +2130,20 @@ async def home():
         
         // Thinking 청크 추가
         function onThinkingChunk(data) {
-            // 현재 활성화된 thinking 메시지 찾기
-            let messageId = null;
+            // 백엔드에서 전달받은 message_id 사용
+            const messageId = data.message_id;
             let streaming = null;
             
-            // streamingMessages에서 해당 에이전트의 thinking 메시지 찾기
-            for (const [key, value] of streamingMessages) {
-                if (key.startsWith(`${data.agent_name}-`) && key.endsWith('-thinking') && value.type === 'thinking') {
-                    messageId = key;
-                    streaming = value;
-                    break;
+            // 정확한 message_id로 찾기
+            if (messageId) {
+                streaming = streamingMessages.get(messageId);
+            } else {
+                // 폴백: 기존 방식으로 찾기
+                for (const [key, value] of streamingMessages) {
+                    if (key.startsWith(`${data.agent_name}-`) && key.endsWith('-thinking') && value.type === 'thinking') {
+                        streaming = value;
+                        break;
+                    }
                 }
             }
             
@@ -2091,8 +2155,8 @@ async def home():
                     textElement.style.textAlign = 'left';
                     textElement.style.direction = 'ltr';
                     
-                    // 깜빡거림 완전 제거: 받은 청크를 바로 표시
-                    textElement.textContent = streaming.content;
+                    // 깜빡거림 완전 제거: 받은 청크를 바로 표시 (텍스트 잘림 방지)
+                    textElement.innerHTML = renderMarkdown(streaming.content);
                     
                     // 스크롤 조정
                     const chatContainer = document.getElementById('chat-container');
@@ -2119,16 +2183,20 @@ async def home():
         
         // Thinking 완료
         function onThinkingComplete(data) {
-            // 현재 활성화된 thinking 메시지 찾기
-            let messageId = null;
+            // 백엔드에서 전달받은 message_id 사용
+            const messageId = data.message_id;
             let streaming = null;
             
-            // streamingMessages에서 해당 에이전트의 thinking 메시지 찾기
-            for (const [key, value] of streamingMessages) {
-                if (key.startsWith(`${data.agent_name}-`) && key.endsWith('-thinking') && value.type === 'thinking') {
-                    messageId = key;
-                    streaming = value;
-                    break;
+            // 정확한 message_id로 찾기
+            if (messageId) {
+                streaming = streamingMessages.get(messageId);
+            } else {
+                // 폴백: 기존 방식으로 찾기
+                for (const [key, value] of streamingMessages) {
+                    if (key.startsWith(`${data.agent_name}-`) && key.endsWith('-thinking') && value.type === 'thinking') {
+                        streaming = value;
+                        break;
+                    }
                 }
             }
             
@@ -2167,6 +2235,14 @@ async def home():
                 }
                 
                 streamingMessages.delete(messageId);
+                
+                // 대기열 시스템 제거 - 텍스트 손실 방지를 위해 content는 즉시 처리됨
+                if (pendingContentMessages.has(data.agent_name)) {
+                    console.log(`📋 대기열 정리: ${data.agent_name} (${pendingContentMessages.get(data.agent_name).length}개 메시지는 이미 처리됨)`);
+                    pendingContentMessages.delete(data.agent_name);
+                }
+                
+                console.log(`✅ Thinking 완료: ${data.agent_name}`);
             } else {
                 // thinking 컨테이너가 없는 경우 (비추론 모델 등) 무시
                 console.log(`⚠️ Thinking 완료 메시지를 처리할 컨테이너가 없음: ${data.agent_name}`);
@@ -2176,34 +2252,51 @@ async def home():
         // Content 청크 추가 (실제 응답) - 백엔드에서 thinking 처리됨
         function onContentChunk(data) {
             const messageId = `${data.agent_name}-${currentRound}-content`;
+            
+            // 텍스트 손실 방지를 위해 content 메시지는 즉시 처리 (순서 보장 단순화)
+            // thinking이 진행 중이어도 content는 즉시 처리하되, UI에서 순서만 조정
+            console.log(`📝 Content 청크 즉시 처리: ${data.agent_name} (${data.chunk.length} 문자)`);
+            
+            // thinking이 아직 진행 중인지 확인 (UI 순서 조정용)
+            const hasActiveThinking = Array.from(streamingMessages.entries()).some(([key, value]) => 
+                key.startsWith(`${data.agent_name}-`) && key.includes('-thinking') && value.type === 'thinking'
+            );
+            
+            if (hasActiveThinking) {
+                console.log(`⚠️ Thinking 진행 중이지만 Content 즉시 처리: ${data.agent_name}`);
+            }
+            
             let streaming = streamingMessages.get(messageId);
             
-            // thinking 태그가 포함된 청크는 완전히 무시 (백엔드에서 처리됨)
+            // 백엔드에서 이미 thinking과 content를 분리해서 보내므로 필터링 최소화
             const chunk = data.chunk;
             
-            // thinking 태그가 명확히 포함된 청크만 무시
-            const thinkingTagPatterns = [
-                '<thinking>', '</thinking>',
-                '<think>', '</think>'
-            ];
-            
-            // thinking 태그가 명확히 포함된 경우만 무시
-            if (thinkingTagPatterns.some(pattern => chunk.includes(pattern))) {
-                console.log('🚫 thinking 태그 청크 무시:', chunk.substring(0, 50) + '...');
-                return;
-            }
-            
-            // thinking 태그의 시작 부분이 포함된 경우도 무시
-            const partialThinkingPatterns = ['<thi', '<thin', '<think', '<thinki', '<thinkin', '<thinking'];
-            if (partialThinkingPatterns.some(pattern => chunk.endsWith(pattern))) {
-                console.log('🚫 부분적 thinking 태그 무시:', chunk);
-                return;
-            }
-            
-            // 빈 청크나 공백만 있는 청크 무시
+            // 빈 청크는 무시
             if (!chunk || chunk.trim() === '') {
                 return;
             }
+            
+            // 백엔드에서 이미 thinking 태그가 제거된 상태이므로 기본적인 정리만 수행
+            let processedChunk = chunk.trim();
+            
+            // 백엔드에서 놓친 thinking 태그가 있을 경우에만 제거 (보조적)
+            if (processedChunk.includes('<think>') || processedChunk.includes('<thinking>')) {
+                console.log('🔧 백엔드에서 놓친 thinking 태그 감지, 제거 중...');
+                processedChunk = processedChunk.replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, '');
+                processedChunk = processedChunk.replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '');
+                processedChunk = processedChunk.replace(/<\/?thinking[^>]*>/gi, '');
+                processedChunk = processedChunk.replace(/<\/?think[^>]*>/gi, '');
+                processedChunk = processedChunk.trim();
+            }
+            
+            // 처리 후 빈 청크인지 확인
+            if (!processedChunk) {
+                console.log('⚠️ 빈 content chunk 수신됨:', chunk.substring(0, 50) + '...');
+                return;
+            }
+            
+            // 처리된 청크 사용 준비
+            console.log('✅ Content chunk 처리 완료:', processedChunk.substring(0, 50) + '...');
             
             if (!streaming) {
                 // 첫 번째 content chunk일 때 메시지 컨테이너 생성
@@ -2243,8 +2336,14 @@ async def home():
                 streamingMessages.set(messageId, streaming);
             }
             
-            // Content 추가 (스트리밍 효과 적용)
-            streaming.content += data.chunk;
+            // Content 추가 (스트리밍 효과 적용) - 텍스트 손실 방지
+            const beforeLength = streaming.content.length;
+            streaming.content += processedChunk; // 처리된 청크 사용
+            const afterLength = streaming.content.length;
+            
+            // 디버깅: 텍스트 누적 상태 로그
+            console.log(`📝 Content 누적: ${data.agent_name} (${beforeLength} → ${afterLength}, +${processedChunk.length})`);
+            
             const contentElement = streaming.element.querySelector('.message-content');
             if (contentElement) {
                 // 스트리밍 효과를 위한 타이핑 애니메이션
@@ -3086,8 +3185,47 @@ async def get_status():
     """서버 상태"""
     return {
         "status": "online",
-        "active_debates": len(active_debates)
+        "active_debates": len(active_debates),
+        "version": "4.1",
+        "environment": "production",
+        "timestamp": datetime.now().isoformat()
     }
+
+@app.get("/api/metrics")
+async def get_metrics():
+    """시스템 메트릭 조회"""
+    return {
+        "metrics": metrics.get_stats(),
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/api/health")
+async def health_check():
+    """헬스체크 엔드포인트"""
+    # Ollama 상태 확인
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{OLLAMA_API_URL}/api/tags")
+            ollama_status = "healthy" if response.status_code == 200 else "unhealthy"
+    except:
+        ollama_status = "unhealthy"
+    
+    # 메모리 상태 확인
+    memory_status = "healthy" if len(active_debates) < 50 else "warning"
+    
+    health_data = {
+        "status": "healthy" if ollama_status == "healthy" and memory_status == "healthy" else "degraded",
+        "timestamp": datetime.now().isoformat(),
+        "checks": {
+            "ollama": ollama_status,
+            "memory": memory_status,
+            "debates": len(active_debates)
+        },
+        "metrics": metrics.get_stats()
+    }
+    
+    status_code = 200 if health_data["status"] == "healthy" else 503
+    return JSONResponse(content=health_data, status_code=status_code)
 
 @app.get("/api/ollama/status")
 async def get_ollama_status():
@@ -3103,20 +3241,52 @@ async def get_ollama_status():
         return {"status": "offline", "success": False, "error": str(e)}
 
 class DebateRequest(BaseModel):
-    topic: str
-    format: str
-    max_rounds: int
-    model: str
-    language: str
-    support_agents: List[Dict]
-    oppose_agents: List[Dict]
-    custom_config: Optional[Dict] = None
+    topic: str = Field(..., min_length=5, max_length=500, description="토론 주제")
+    format: str = Field("adversarial", pattern="^(adversarial|collaborative|competitive|custom)$", description="토론 형식")
+    max_rounds: int = Field(5, ge=1, le=10, description="최대 라운드 수")
+    model: str = Field("llama3.2:3b", description="사용할 AI 모델")
+    language: str = Field("한국어", description="언어")
+    support_agents: List[Dict] = Field([], description="지지 에이전트")
+    oppose_agents: List[Dict] = Field([], description="반대 에이전트")
+    custom_config: Optional[Dict] = Field(None, description="커스텀 설정")
+    
+    @validator('topic')
+    def sanitize_topic(cls, v):
+        """토론 주제 검증 및 정리"""
+        if not v or not v.strip():
+            raise ValueError("토론 주제는 비어있을 수 없습니다.")
+        
+        # HTML 태그 제거
+        clean_topic = html.escape(v.strip())
+        
+        # 기본적인 XSS 패턴 필터링
+        xss_patterns = [
+            r'<script[^>]*>.*?</script>',
+            r'javascript:',
+            r'on\w+\s*=',
+            r'<iframe[^>]*>.*?</iframe>',
+        ]
+        
+        for pattern in xss_patterns:
+            clean_topic = re.sub(pattern, '', clean_topic, flags=re.IGNORECASE | re.DOTALL)
+        
+        # 연속된 공백 정리
+        clean_topic = re.sub(r'\s+', ' ', clean_topic)
+        
+        # 최종 길이 검증
+        if len(clean_topic) < 5:
+            raise ValueError("토론 주제는 최소 5자 이상이어야 합니다.")
+        
+        return clean_topic
 
 @app.post("/api/debate/start")
 async def start_debate(request: DebateRequest, background_tasks: BackgroundTasks):
     """토론 시작"""
     try:
         session_id = str(uuid.uuid4())
+        
+        # 메트릭 수집
+        metrics.record_debate_start()
         
         # 토론 설정
         config = DebateConfig(
@@ -3373,6 +3543,12 @@ async def conduct_debate_async(session: DebateSession, language: str):
         # ORGANIZER 라운드 종합 요약
         await asyncio.sleep(2)
         
+        # 진행자 요약 시작 알림
+        await broadcast_message(session, {
+            "type": "system",
+            "data": {"message": f"🎯 진행자가 라운드 {round_num} 종합 정리를 시작합니다..."}
+        })
+        
         organizer_summary = await broadcast_argument_streaming(
             session,
             session.organizer,
@@ -3381,22 +3557,61 @@ async def conduct_debate_async(session: DebateSession, language: str):
             round_num,
             f"{korean_context}라운드 {round_num} 종합 정리: 이번 라운드의 핵심 쟁점과 각 팀의 주요 논점을 정리하고, 다음 라운드의 방향을 제시해주세요."
         )
-        await asyncio.sleep(2)
+        
+        # 진행자 요약 완료 후 추가 대기 시간 (다음 라운드 준비)
+        await asyncio.sleep(3)
+        
+        # 다음 라운드 예고 (마지막 라운드가 아닌 경우)
+        if round_num < controller.config.max_rounds:
+            await broadcast_message(session, {
+                "type": "system",
+                "data": {"message": f"🔄 잠시 후 라운드 {round_num + 1}이 시작됩니다..."}
+            })
+            await asyncio.sleep(2)
     
     # 토론 종료 - ORGANIZER 최종 판정
     await asyncio.sleep(2)
     winner = "support" if support_score > oppose_score else "oppose"
     
-    # ORGANIZER 최종 결론 (스트리밍 방식)
+    # 최종 결론 시작 알림
+    await broadcast_message(session, {
+        "type": "system",
+        "data": {"message": f"🏆 토론 종료! 진행자가 전체 토론을 종합하여 최종 결론을 발표합니다..."}
+    })
+    await asyncio.sleep(1)
+    
+    # ORGANIZER 최종 결론 (스트리밍 방식) - 더 상세한 프롬프트
+    detailed_prompt = f"""{korean_context}토론 최종 결론:
+    
+    📊 **토론 개요**:
+    - 주제: {controller.config.topic}
+    - 총 라운드: {controller.config.max_rounds}
+    - 참여 에이전트: {len(session.support_agents) + len(session.oppose_agents)}명
+    
+    📈 **점수 현황**:
+    - 지지팀: {support_score:.2f}점
+    - 반대팀: {oppose_score:.2f}점
+    - 승리팀: {"지지팀" if winner == "support" else "반대팀"}
+    
+    🎯 **종합 분석 요청**:
+    1. 각 라운드별 핵심 쟁점 요약
+    2. 양측의 주요 논점과 강점/약점 분석
+    3. 가장 설득력 있었던 논증 식별
+    4. 토론 과정에서 나타난 흥미로운 패턴이나 전환점
+    5. 최종 승부 판정 근거와 상세한 이유
+    6. 이 주제에 대한 향후 논의 방향 제시
+    
+    전체 토론을 종합하여 공정하고 상세한 최종 결론을 제시해주세요."""
+    
     organizer_conclusion = await broadcast_argument_streaming(
         session,
         session.organizer,
         controller.config.topic,
         controller.debate_history,
         controller.config.max_rounds + 1,
-        f"{korean_context}토론 최종 결론: 전체 토론을 종합하여 승부를 판정하고 시사점을 제시해주세요. 점수 - 지지팀: {support_score:.2f}, 반대팀: {oppose_score:.2f}"
+        detailed_prompt
     )
-    await asyncio.sleep(2)
+    await asyncio.sleep(3)
     
     await broadcast_message(session, {
         "type": "debate_complete",
@@ -3431,6 +3646,10 @@ async def broadcast_argument_streaming(session: DebateSession, agent, topic, con
     retry_delay = 2
     
     # 스트리밍 콜백 정의
+    # 고유한 메시지 ID 생성
+    import time
+    message_id = f"{agent.name}-{round_num}-thinking-{int(time.time() * 1000)}"
+    
     async def stream_callback(message_type, chunk):
         if message_type == 'thinking_start':
             await broadcast_message(session, {
@@ -3438,7 +3657,8 @@ async def broadcast_argument_streaming(session: DebateSession, agent, topic, con
                 "data": {
                     "agent_name": agent.name,
                     "stance": agent.stance.value,
-                    "round": round_num
+                    "round": round_num,
+                    "message_id": message_id
                 }
             })
         elif message_type == 'thinking_chunk':
@@ -3447,7 +3667,8 @@ async def broadcast_argument_streaming(session: DebateSession, agent, topic, con
                 "type": "thinking_chunk",
                 "data": {
                     "agent_name": agent.name,
-                    "chunk": chunk
+                    "chunk": chunk,
+                    "message_id": message_id
                 }
             })
         elif message_type == 'thinking_complete':
@@ -3455,7 +3676,8 @@ async def broadcast_argument_streaming(session: DebateSession, agent, topic, con
                 "type": "thinking_complete",
                 "data": {
                     "agent_name": agent.name,
-                    "thinking_content": ''.join(thinking_chunks)
+                    "thinking_content": ''.join(thinking_chunks),
+                    "message_id": message_id
                 }
             })
             thinking_chunks.clear()
@@ -3630,10 +3852,14 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         await websocket.accept()
         print(f"🔗 WebSocket 연결: {client_id} → {session_id}")
         
+        # 메트릭 수집
+        metrics.record_connection_change(1)
+        
         # 세션 유효성 검증
         if session_id not in active_debates:
             await websocket.close(code=1008, reason="Invalid session")
             print(f"❌ 잘못된 세션: {session_id}")
+            metrics.record_connection_change(-1)
             return
         
         session = active_debates[session_id]

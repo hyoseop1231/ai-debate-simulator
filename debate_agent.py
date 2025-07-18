@@ -466,12 +466,31 @@ class DebateAgent:
         return await self._generate_intelligent_fallback_async()
     
     async def _handle_streaming_response(self, client, api_url, payload, stream_callback):
-        """실시간 스트리밍 thinking 태그 처리"""
+        """실시간 스트리밍 thinking 태그 처리 (개선된 버전)"""
         buffer = ""
         in_thinking = False
         thinking_content = ""
         actual_content = ""
         thinking_sent = False
+        
+        def clean_thinking_tags(text):
+            """thinking 태그 제거 함수"""
+            import re
+            # thinking 태그 패턴들
+            patterns = [
+                r'<thinking[^>]*>[\s\S]*?</thinking>',
+                r'<think[^>]*>[\s\S]*?</think>',
+                r'<thinking[^>]*>',
+                r'</thinking>',
+                r'<think[^>]*>',
+                r'</think>'
+            ]
+            
+            cleaned = text
+            for pattern in patterns:
+                cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+            
+            return cleaned.strip()
         
         async with client.stream('POST', api_url, json=payload) as response:
             response.raise_for_status()
@@ -494,13 +513,14 @@ class DebateAgent:
                                     if think_start != -1 and (thinking_start == -1 or think_start < thinking_start):
                                         # <think> 태그 처리
                                         if think_start > 0:
-                                            # 태그 이전 내용을 실제 컨텐츠로 (안전하게 처리)
+                                            # 태그 이전 내용을 실제 컨텐츠로 (thinking 태그 제거)
                                             content = buffer[:think_start].strip()
-                                            if content:  # 비어있지 않은 경우만 전송
-                                                actual_content += content
-                                                # 바로 전송 (청크 나누지 않음)
-                                                await stream_callback('content_chunk', content)
-                                                await asyncio.sleep(0.15)  # 적당한 딜레이
+                                            cleaned_content = clean_thinking_tags(content)
+                                            if cleaned_content:  # 비어있지 않은 경우만 전송
+                                                actual_content += cleaned_content
+                                                self.logger.debug(f"Content chunk 전송: {cleaned_content[:50]}...")
+                                                await stream_callback('content_chunk', cleaned_content)
+                                                await asyncio.sleep(0.15)
                                         
                                         buffer = buffer[think_start + 7:]  # '<think>' 제거
                                         in_thinking = True
@@ -512,11 +532,12 @@ class DebateAgent:
                                         # <thinking> 태그 처리
                                         if thinking_start > 0:
                                             content = buffer[:thinking_start].strip()
-                                            if content:  # 비어있지 않은 경우만 전송
-                                                actual_content += content
-                                                # 바로 전송 (청크 나누지 않음)
-                                                await stream_callback('content_chunk', content)
-                                                await asyncio.sleep(0.15)  # 적당한 딜레이
+                                            cleaned_content = clean_thinking_tags(content)
+                                            if cleaned_content:  # 비어있지 않은 경우만 전송
+                                                actual_content += cleaned_content
+                                                self.logger.debug(f"Content chunk 전송: {cleaned_content[:50]}...")
+                                                await stream_callback('content_chunk', cleaned_content)
+                                                await asyncio.sleep(0.15)
                                         
                                         buffer = buffer[thinking_start + 10:]  # '<thinking>' 제거
                                         in_thinking = True
@@ -529,10 +550,12 @@ class DebateAgent:
                                         safe_end = buffer.rfind(' ') if ' ' in buffer else -1
                                         if safe_end > 0 and len(buffer) > 100:  # 큰 청크 크기
                                             content = buffer[:safe_end + 1]
-                                            actual_content += content
-                                            # 바로 전송 (청크 나누지 않음)
-                                            await stream_callback('content_chunk', content)
-                                            await asyncio.sleep(0.15)  # 적당한 딜레이
+                                            cleaned_content = clean_thinking_tags(content)
+                                            if cleaned_content:  # 비어있지 않은 경우만 전송
+                                                actual_content += cleaned_content
+                                                self.logger.debug(f"Content chunk 전송: {cleaned_content[:50]}...")
+                                                await stream_callback('content_chunk', cleaned_content)
+                                                await asyncio.sleep(0.15)
                                             buffer = buffer[safe_end + 1:]
                                         else:
                                             break
@@ -593,11 +616,13 @@ class DebateAgent:
                 await stream_callback('thinking_chunk', buffer)
                 await stream_callback('thinking_complete', thinking_content)
             else:
-                # 일반 컨텐츠 - 바로 전송
-                actual_content += buffer
-                # 바로 전송 (청크 나누지 않음)
-                await stream_callback('content_chunk', buffer)
-                await asyncio.sleep(0.15)  # 적당한 딜레이
+                # 일반 컨텐츠 - thinking 태그 제거 후 전송
+                cleaned_content = clean_thinking_tags(buffer)
+                if cleaned_content:
+                    actual_content += cleaned_content
+                    self.logger.debug(f"남은 버퍼 Content chunk 전송: {cleaned_content[:50]}...")
+                    await stream_callback('content_chunk', cleaned_content)
+                    await asyncio.sleep(0.15)
         
         # 비추론 모델 대응: thinking 태그가 없는 경우 전체 응답을 처리
         if not thinking_content and actual_content:
@@ -619,20 +644,110 @@ class DebateAgent:
         # 기본 메시지 처리 - 실제 컨텐츠가 없을 경우만
         if not actual_content.strip():
             if thinking_content:  # thinking은 있지만 실제 컨텐츠가 없는 경우
-                default_msg = "[사고 과정은 있지만 실제 응답이 생성되지 않았습니다]"
+                self.logger.error(f"실제 응답 생성 실패 - thinking만 있음: {len(thinking_content)}자")
+                self.logger.error(f"Thinking 내용: {thinking_content[:200]}...")
+                
+                # thinking 내용이 있다면 그 내용에서 응답 추출 시도
+                if thinking_content:
+                    # thinking 내용을 기반으로 실제 응답 생성
+                    response_from_thinking = self._extract_response_from_thinking(thinking_content)
+                    if response_from_thinking:
+                        self.logger.info(f"Thinking에서 응답 추출 성공: {response_from_thinking[:50]}...")
+                        await stream_callback('content_chunk', response_from_thinking)
+                        actual_content = response_from_thinking
+                    else:
+                        default_msg = "[응답 생성 중 기술적 문제가 발생했습니다. 잠시 후 다시 시도해주세요.]"
+                        self.logger.warning(f"빈 응답 감지 - 기본 메시지 전송: {default_msg}")
+                        await stream_callback('content_chunk', default_msg)
+                        actual_content = default_msg
+                else:
+                    default_msg = "[응답 생성 중 오류가 발생했습니다]"
+                    self.logger.warning(f"빈 응답 감지 - 기본 메시지 전송: {default_msg}")
+                    await stream_callback('content_chunk', default_msg)
+                    actual_content = default_msg
             else:
                 default_msg = "[응답 생성 중 오류가 발생했습니다]"
-            await stream_callback('content_chunk', default_msg)
-            actual_content = default_msg
+                self.logger.warning(f"빈 응답 감지 - 기본 메시지 전송: {default_msg}")
+                await stream_callback('content_chunk', default_msg)
+                actual_content = default_msg
         
         self.logger.info(f"스트리밍 완료 - thinking: {len(thinking_content)}자, 실제: {len(actual_content)}자")
         
         # 디버깅: 실제 내용의 시작 부분 확인
         if actual_content:
             self.logger.debug(f"실제 응답 시작: {actual_content[:100]}...")
+        else:
+            self.logger.error("실제 응답 내용이 비어있습니다!")
         
         # 응답 반환
         return actual_content
+    
+    def _extract_response_from_thinking(self, thinking_content: str) -> str:
+        """thinking 내용에서 실제 응답 추출"""
+        if not thinking_content:
+            return ""
+        
+        # thinking 내용이 실제로는 응답인 경우가 있음
+        # 일부 모델은 thinking 태그 없이 직접 응답하거나, thinking 태그를 잘못 사용함
+        
+        # 1. thinking 내용이 대화체인지 확인
+        conversational_indicators = [
+            "그런데", "하지만", "사실", "정말", "진짜", "아니", "맞아", "그래", "네", "예",
+            "생각해보면", "그렇지만", "그러나", "따라서", "그래서", "그러므로",
+            "어요", "습니다", "죠", "거야", "거죠", "잖아", "거든", "해요"
+        ]
+        
+        # 2. 질문이나 반박의 형태인지 확인
+        question_indicators = ["?", "까요", "인가요", "일까요", "가요", "죠?"]
+        
+        # 3. 의견 표현인지 확인
+        opinion_indicators = ["생각", "의견", "관점", "입장", "견해", "판단"]
+        
+        is_conversational = any(indicator in thinking_content for indicator in conversational_indicators)
+        is_question = any(indicator in thinking_content for indicator in question_indicators)
+        is_opinion = any(indicator in thinking_content for indicator in opinion_indicators)
+        
+        # 4. thinking 내용이 실제 응답처럼 보이는지 확인
+        if is_conversational or is_question or is_opinion:
+            # thinking 내용을 정리하여 응답으로 변환
+            response = thinking_content.strip()
+            
+            # 너무 길면 요약
+            if len(response) > 300:
+                sentences = response.split('.')
+                response = '. '.join(sentences[:3]) + '.'
+            
+            # 메타 언급 제거 (thinking에 대한 언급)
+            meta_phrases = [
+                "생각해보니", "생각해보면", "생각을 해보면", "고민해보니", "고민해보면",
+                "분석해보니", "분석해보면", "판단해보니", "판단해보면"
+            ]
+            
+            for phrase in meta_phrases:
+                if response.startswith(phrase):
+                    response = response[len(phrase):].strip()
+                    if response.startswith(','):
+                        response = response[1:].strip()
+                    break
+            
+            return response
+        
+        # 5. thinking 내용이 너무 메타적이면 기본 응답 생성
+        if len(thinking_content) > 50:
+            # thinking 내용의 핵심 키워드를 추출하여 응답 생성
+            keywords = []
+            important_words = thinking_content.split()
+            
+            for word in important_words[:20]:  # 처음 20개 단어만 확인
+                if len(word) > 2 and word not in ["그런데", "하지만", "생각", "아니", "진짜"]:
+                    keywords.append(word)
+                    if len(keywords) >= 3:
+                        break
+            
+            if keywords:
+                return f"흥미로운 점이 있네요. {' '.join(keywords[:2])}에 대해 생각해보면 복잡한 문제인 것 같습니다. 좀 더 자세히 살펴볼 필요가 있을 것 같아요."
+        
+        return ""
     
     async def _analyze_response_quality_async(self, content: str) -> Dict:
         """Context7 방식: 비동기 응답 품질 분석"""
