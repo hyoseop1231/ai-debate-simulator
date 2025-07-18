@@ -17,6 +17,7 @@ import uuid
 from datetime import datetime
 import random
 import httpx
+import os
 
 from debate_agent import DebateAgent, AgentRole, DebateStance
 from debate_controller import DebateController, DebateConfig, DebateFormat
@@ -35,6 +36,9 @@ app.add_middleware(
 
 # 전역 상태
 active_debates = {}
+
+# 환경 변수 설정
+OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
 
 # 토론 형식별 설정
 DEBATE_FORMATS = {
@@ -3061,7 +3065,7 @@ async def get_models():
     """사용 가능한 Ollama 모델 목록"""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get("http://localhost:11434/api/tags")
+            response = await client.get(f"{OLLAMA_API_URL}/api/tags")
             if response.status_code == 200:
                 data = response.json()
                 models = []
@@ -3090,7 +3094,7 @@ async def get_ollama_status():
     """Ollama 서버 상태 확인"""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get("http://localhost:11434/api/tags")
+            response = await client.get(f"{OLLAMA_API_URL}/api/tags")
             if response.status_code == 200:
                 return {"status": "online", "success": True}
             else:

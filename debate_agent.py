@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import json
 import logging
 import asyncio
+import os
 
 class AgentRole(Enum):
     """Agent4Debate의 역할 기반 접근법"""
@@ -48,6 +49,8 @@ class DebateAgent:
         persona_prompt: str = None,
         temperature: float = 0.7
     ):
+        # 환경 변수에서 Ollama API URL 읽기
+        self.ollama_api_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
         self.name = name
         self.role = role
         self.stance = stance
@@ -324,7 +327,7 @@ class DebateAgent:
         import httpx
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get("http://localhost:11434/api/tags")
+                response = await client.get(f"{self.ollama_api_url}/api/tags")
                 return response.status_code == 200
         except Exception:
             return False
@@ -341,7 +344,7 @@ class DebateAgent:
             return await self._generate_intelligent_fallback_async()
         
         # Ollama API 엔드포인트
-        api_url = "http://localhost:11434/api/chat"
+        api_url = f"{self.ollama_api_url}/api/chat"
         
         # KITECH 방식: 구조화된 시스템 프롬프트 (thinking 태그 포함)
         enhanced_system_prompt = f"""
