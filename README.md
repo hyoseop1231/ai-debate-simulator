@@ -1,22 +1,26 @@
 # 🎪 AI 토론 시뮬레이터
 
-[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Latest-green.svg)](https://fastapi.tiangolo.com)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://docker.com)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **실시간 스트리밍과 자연스러운 대화가 가능한 고급 AI 토론 시뮬레이션 시스템**
+> **프로덕션 수준의 실시간 AI 토론 시뮬레이션 시스템 - 완전한 thinking/content 분리와 자연스러운 대화 지원**
 
 ## 🌟 주요 특징
 
-### ✨ 2024년 최신 개선사항 (v5.0)
-- **완전한 메시지 손실 방지**: thinking과 content 완벽 분리 처리
-- **지능형 응답 추출**: thinking 내용에서 실제 응답 자동 추출
-- **안정적인 스트리밍**: 백엔드 레벨에서 thinking 태그 사전 처리
-- **자연스러운 AI 대화**: 구조적이지 않은 친근한 톤
-- **글자 단위 타이핑**: 사람이 직접 타이핑하는 것 같은 자연스러운 효과
-- **사고 과정 시각화**: AI의 thinking 프로세스를 별도 아코디언으로 표시
-- **반응형 웹 UI**: 모든 기기에서 완벽한 사용 경험
-- **프로덕션 수준 Docker**: 멀티스테이지 빌드 및 보안 강화
+### ✨ 2024년 최종 안정화 버전 (v6.0)
+- **🎯 Gemma3:e4b 기본 모델**: 안정성과 성능을 모두 만족하는 최적 모델
+- **🔄 완전한 메시지 손실 방지**: thinking과 content 완벽 분리 처리
+- **🧠 지능형 응답 추출**: thinking 내용에서 실제 응답 자동 추출
+- **⚡ 안정적인 스트리밍**: 백엔드 레벨에서 thinking 태그 사전 처리
+- **💬 자연스러운 AI 대화**: 구조적이지 않은 친근한 톤의 토론
+- **✨ 글자 단위 타이핑**: 사람이 직접 타이핑하는 것 같은 자연스러운 효과
+- **📊 사고 과정 시각화**: AI의 thinking 프로세스를 별도 아코디언으로 표시
+- **📱 반응형 웹 UI**: 모든 기기에서 완벽한 사용 경험
+- **🐳 프로덕션 수준 Docker**: 멀티스테이지 빌드, 보안 강화, 모니터링 통합
+- **🔧 실시간 평가 시스템**: 품질 기반 평가로 토론 품질 보장
+- **🚀 종합 평가 시스템**: ORGANIZER의 체계적인 토론 내용 종합 및 결론 도출
 
 ### 🎯 핵심 기능
 - **다양한 토론 형식**: 대립형(MAD), 협력형, 경쟁형, 커스텀
@@ -42,9 +46,10 @@ pip install -r requirements.txt
 # Ollama 설치 및 실행 (https://ollama.ai)
 ollama serve
 
-# 추천 모델 다운로드 (터미널 2에서)
-ollama pull qwen3:30b-a3b  # 기본 모델 (고성능)
-ollama pull llama3.2:3b    # 백업 모델 (빠름)
+# 기본 모델 다운로드 (터미널 2에서)
+ollama pull gemma3n:e4b      # 기본 모델 (안정성+성능 최적화)
+ollama pull llama3.2:3b      # 백업 모델 (빠름)
+ollama pull qwen3:30b-a3b    # 고성능 모델 (선택사항)
 ```
 
 ### 3. 웹 애플리케이션 실행
@@ -83,44 +88,46 @@ http://localhost:8003
 ```
 ai-debate-simulator/
 ├── 🎯 Core Files
-│   ├── final_web_app.py          # 메인 웹 애플리케이션 (안정화 버전)
-│   ├── final_web_app_improved.py # 🆕 프로덕션 수준 개선 버전
+│   ├── final_web_app.py          # 메인 웹 애플리케이션 (최신 안정화 버전)
 │   ├── debate_agent.py           # AI 에이전트 구현 (thinking 분리 로직 포함)
-│   ├── debate_controller.py      # 토론 제어 시스템
-│   ├── debate_evaluator.py       # 평가 시스템
+│   ├── debate_controller.py      # 토론 제어 시스템 (다양한 토론 형식 지원)
+│   ├── debate_evaluator.py       # 다차원 평가 시스템 (M-MAD 스타일)
 │   ├── start_server_simple.py    # 서버 시작 스크립트
-│   ├── requirements.txt          # 기본 의존성 목록
-│   └── requirements_improved.txt # 🆕 프로덕션 수준 의존성
+│   └── requirements.txt          # 프로덕션 수준 의존성 (200+ 패키지)
 │
 ├── 🔧 Configuration
 │   ├── config/
-│   │   ├── settings.py           # 🆕 환경별 설정
+│   │   ├── settings.py           # 환경별 설정 관리
 │   │   └── __init__.py
-│   ├── env_sample.txt            # 🆕 환경 변수 템플릿
-│   └── .env.sample               # 기본 환경 변수
+│   └── env_sample.txt            # 환경 변수 템플릿
 │
 ├── 🛡️ Security & Utils
 │   ├── utils/
-│   │   ├── security.py           # 🆕 보안 시스템
-│   │   ├── cache.py              # 🆕 캐싱 시스템
-│   │   ├── monitoring.py         # 🆕 모니터링 시스템
+│   │   ├── security.py           # 보안 시스템 (레이트 리미팅, 입력 검증)
+│   │   ├── cache.py              # 캐싱 시스템 (Redis 통합)
+│   │   ├── monitoring.py         # 모니터링 시스템 (성능 메트릭)
 │   │   └── __init__.py
 │
 ├── 🐳 Docker & Deployment
-│   ├── Dockerfile                # Docker 이미지 정의
-│   ├── Dockerfile.improved       # 🆕 프로덕션 수준 멀티스테이지 빌드
-│   ├── docker-compose.yml        # 기본 Docker Compose 설정
-│   └── docker-compose.improved.yml # 🆕 완전한 스택 구성
+│   ├── Dockerfile                # 프로덕션 수준 멀티스테이지 빌드
+│   ├── docker-compose.yml        # 완전한 인프라 스택 (Redis, PostgreSQL, 모니터링)
+│   ├── Dockerfile.original       # 원본 Dockerfile (백업)
+│   ├── docker-compose.original.yml # 원본 docker-compose (백업)
+│   └── requirements.original.txt # 원본 requirements (백업)
 │
 ├── 🧪 Testing
 │   ├── test_ollama.py            # Ollama 연결 테스트
-│   ├── test_improved_system.py   # 🆕 통합 테스트
-│   └── test_avatar.html          # 🆕 아바타 생성 테스트
+│   ├── test_improved_system.py   # 통합 테스트 스위트
+│   └── test_avatar.html          # 아바타 생성 테스트
+│
+├── 📁 Logs & Cache
+│   └── logs/                     # 애플리케이션 로그 디렉토리
 │
 └── 📚 Documentation
-    ├── README.md                 # 이 파일
-    ├── IMPROVEMENT_GUIDE.md      # 🆕 완전한 개선 가이드
+    ├── README.md                 # 이 파일 (완전 업데이트됨)
+    ├── IMPROVEMENT_GUIDE.md      # 상세한 개선 가이드
     ├── START_HERE.md            # 빠른 시작 가이드
+    ├── CHANGELOG.md             # 버전별 변경 사항
     └── LICENSE                   # MIT 라이선스
 ```
 
@@ -226,44 +233,57 @@ AI들이 구조적이지 않고 친구와 대화하듯 자연스럽게 토론합
 - **Real-time UI Updates**: 즉각적인 피드백
 
 ### AI Models
-- **qwen3:30b-a3b**: 기본 고성능 모델
+- **gemma3n:e4b**: 기본 모델 (안정성+성능 최적화)
 - **llama3.2:3b**: 빠른 백업 모델
+- **qwen3:30b-a3b**: 고성능 모델 (선택사항)
 - **지원 형식**: Ollama 호환 모든 모델
 
 ## 🐳 Docker 실행 가이드
 
-### 빠른 Docker 실행 (기본 버전)
+### 🚀 프로덕션 수준 Docker 실행 (권장)
 ```bash
 # 1. 리포지토리 클론
 git clone https://github.com/hyoseop1231/ai-debate-simulator.git
 cd ai-debate-simulator
 
 # 2. 환경 설정 (선택사항)
-cp .env.sample .env
+cp env_sample.txt .env
 
-# 3. Docker Compose 실행
-docker-compose up -d
+# 3. 기본 실행 (AI 토론 시뮬레이터만)
+docker-compose up -d ai-debate-simulator
 
-# 4. 브라우저 접속
+# 4. 개발 환경 실행 (소스 코드 마운트)
+docker-compose --profile development up -d
+
+# 5. 완전한 프로덕션 스택 (Redis, PostgreSQL 포함)
+docker-compose --profile production up -d
+
+# 6. 모니터링 포함 실행 (Prometheus, Grafana)
+docker-compose --profile production --profile monitoring up -d
+
+# 7. 브라우저 접속
 open http://localhost:8003
 ```
 
-### 🚀 프로덕션 수준 실행 (개선된 버전)
+### 🔧 환경별 실행 방법
 ```bash
-# 1. 개선된 Docker 환경 설정
-cp env_sample.txt .env.development
+# 최소 실행 (AI 토론만)
+docker-compose up -d ai-debate-simulator
 
-# 2. 개발 환경 실행
-docker-compose -f docker-compose.improved.yml --profile development up -d
+# 개발 환경 (핫 리로드 + 디버깅)
+docker-compose --profile development up -d
 
-# 3. 프로덕션 환경 실행
-docker-compose -f docker-compose.improved.yml --profile production up -d
+# 프로덕션 환경 (캐시 + 데이터베이스)
+docker-compose --profile production up -d
 
-# 4. 모니터링 포함 실행
-docker-compose -f docker-compose.improved.yml --profile production --profile monitoring up -d
+# 모니터링 환경 (성능 모니터링)
+docker-compose --profile monitoring up -d
 
-# 5. 브라우저 접속
-open http://localhost:8003
+# 로깅 환경 (ELK 스택)
+docker-compose --profile logging up -d
+
+# 전체 스택 (모든 서비스)
+docker-compose --profile production --profile monitoring --profile logging up -d
 ```
 
 ### Docker 관리 명령어
@@ -295,7 +315,7 @@ LOG_LEVEL=INFO
 
 # 성능 튜닝
 MAX_DEBATE_ROUNDS=5
-DEFAULT_MODEL=qwen3:30b-a3b
+DEFAULT_MODEL=gemma3n:e4b
 CHUNK_SIZE=1
 ```
 
@@ -348,13 +368,13 @@ self.model = "your-custom-model:latest"
 ### 주요 엔드포인트
 ```
 GET  /api/status           # 서버 상태 확인
-GET  /api/health           # 🆕 헬스체크 (개선된 버전)
-GET  /api/metrics          # 🆕 성능 메트릭
+GET  /api/health           # 헬스체크 (프로덕션용)
+GET  /api/metrics          # 성능 메트릭 (Prometheus 호환)
 GET  /api/models           # 사용 가능한 모델 목록  
-GET  /api/ollama/status    # 🆕 Ollama 서버 상태
+GET  /api/ollama/status    # Ollama 서버 상태 및 연결 테스트
 POST /api/debate/start     # 토론 시작
-POST /api/cache/clear      # 🆕 캐시 정리
-GET  /ws/{session_id}      # WebSocket 연결
+POST /api/cache/clear      # 캐시 정리 (Redis 지원)
+GET  /ws/{session_id}      # WebSocket 연결 (실시간 스트리밍)
 ```
 
 ## 🐛 문제 해결
@@ -385,8 +405,9 @@ kill -9 <PID>
 # 모델 목록 확인
 ollama list
 
-# 모델 다시 다운로드
-ollama pull qwen3:30b-a3b
+# 기본 모델 다시 다운로드
+ollama pull gemma3n:e4b
+ollama pull llama3.2:3b
 ```
 
 ### 브라우저 문제
@@ -420,20 +441,24 @@ python3 test_ollama.py
 
 ## 📈 성능 최적화
 
-### 최신 개선사항 (2024 v5.0)
-- **완전한 메시지 손실 방지**: thinking과 content 완벽 분리
-- **지능형 응답 추출**: thinking 내용에서 실제 응답 자동 추출
-- **90% DOM 업데이트 감소**: 청크 크기 최적화
-- **완전한 깜빡거림 제거**: 모든 애니메이션 효과 제거
-- **자연스러운 타이핑**: 글자 단위 스트리밍
-- **메모리 사용량 50% 감소**: 불필요한 처리 제거
-- **프로덕션 수준 보안**: 레이트 리미팅, 입력 검증, 에러 핸들링
-- **실시간 모니터링**: 성능 메트릭 및 헬스체크
+### 최종 안정화 개선사항 (2024 v6.0)
+- **🎯 Gemma3:e4b 최적화**: 안정성과 성능을 모두 만족하는 모델 선택
+- **🔄 완전한 메시지 손실 방지**: thinking과 content 완벽 분리
+- **🧠 지능형 응답 추출**: thinking 내용에서 실제 응답 자동 추출
+- **⚡ 90% DOM 업데이트 감소**: 청크 크기 최적화
+- **✨ 완전한 깜빡거림 제거**: 모든 애니메이션 효과 제거
+- **💬 자연스러운 타이핑**: 글자 단위 스트리밍
+- **📊 메모리 사용량 50% 감소**: 불필요한 처리 제거
+- **🛡️ 프로덕션 수준 보안**: 레이트 리미팅, 입력 검증, 에러 핸들링
+- **📈 실시간 모니터링**: 성능 메트릭 및 헬스체크
+- **🔧 실시간 평가 시스템**: 품질 기반 평가로 토론 품질 향상
+- **🚀 종합 평가 개선**: ORGANIZER 타임아웃 120초, 청크 최적화
 
 ### 권장 사양
-- **RAM**: 8GB+ (qwen3:30b-a3b 사용시)
-- **CPU**: 4코어+ 
+- **RAM**: 6GB+ (gemma3n:e4b 사용시), 8GB+ (qwen3:30b-a3b 사용시)
+- **CPU**: 4코어+ (최적 성능을 위해)
 - **GPU**: 선택사항 (CPU로도 원활 동작)
+- **디스크**: 최소 10GB (모델 저장용)
 - **네트워크**: 로컬 실행 (인터넷 불필요)
 
 ## 🎯 추천 토론 주제
@@ -470,6 +495,27 @@ python3 test_ollama.py
 
 ---
 
+## 📝 최신 업데이트 (v6.0 - 2024.07.20)
+
+### 🎯 주요 변경사항
+- **기본 모델 변경**: `gemma3n:e4b`로 안정성과 성능 최적화
+- **프로덕션 인프라**: Docker 멀티스테이지 빌드, Redis, PostgreSQL, 모니터링 통합
+- **완전한 메시지 처리**: thinking과 content 완벽 분리, 메시지 손실 방지
+- **실시간 평가**: 품질 기반 평가 시스템으로 토론 품질 향상
+- **종합 평가 개선**: ORGANIZER 타임아웃 및 청크 최적화
+- **중복 파일 정리**: improved 파일들을 기본 파일로 통합
+
+### 🔧 기술 개선
+- **200+ 패키지**: 프로덕션 수준 의존성 관리
+- **보안 강화**: 레이트 리미팅, 입력 검증, 에러 핸들링
+- **모니터링**: Prometheus, Grafana, ELK 스택 지원
+- **캐싱**: Redis 통합으로 성능 향상
+- **로깅**: 구조화된 로깅 시스템
+
+---
+
 **🎪 즐거운 AI 토론 경험을 즐기세요!** 
 
 > *"AI들이 토론하는 모습을 보며 우리도 더 나은 사고를 배울 수 있습니다."*
+
+**📢 v6.0 업데이트**: 이제 더욱 안정적이고 강력한 AI 토론 시스템으로 업그레이드되었습니다!

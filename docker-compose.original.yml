@@ -1,0 +1,50 @@
+# 🎪 AI 토론 시뮬레이터 Docker Compose
+version: '3.8'
+
+services:
+  # AI 토론 시뮬레이터 웹 애플리케이션
+  ai-debate-simulator:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-debate-simulator
+    ports:
+      - "8003:8003"
+    environment:
+      - OLLAMA_API_URL=http://host.docker.internal:11434
+      - PYTHONPATH=/app
+      - LOG_LEVEL=INFO
+      - DEBATE_PORT=8003
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - debate-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Ollama LLM 서버 (선택사항 - 호스트에서 실행 중이면 주석 처리)
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: ollama-server
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   environment:
+  #     - OLLAMA_HOST=0.0.0.0
+  #   networks:
+  #     - debate-network
+  #   restart: unless-stopped
+
+networks:
+  debate-network:
+    driver: bridge
+
+volumes:
+  ollama_data:
+    driver: local

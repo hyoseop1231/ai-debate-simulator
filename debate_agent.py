@@ -45,7 +45,7 @@ class DebateAgent:
         name: str,
         role: AgentRole,
         stance: DebateStance,
-        model: str = "llama3.2:3b",
+        model: str = "gemma3n:e4b",
         persona_prompt: str = None,
         temperature: float = 0.7
     ):
@@ -357,34 +357,27 @@ class DebateAgent:
 - 상대방 말에 직접 반응하면서 시작
 - 너무 격식적이지 말고 친근하게
 
-🧠 **사고 과정과 실제 응답 분리:**
-다음과 같은 형식으로 응답하세요:
+💡 **효과적인 응답 작성법:**
 
-<think>
-여기에 간단한 사고 과정을 작성하세요:
-- 뭔가 놓친 점이나 반박할 점은?
-- 어떤 근거나 예시를 들면 좋을까?
-- 상대방에게 어떻게 대답할까?
+토론에서 중요한 것은 명확한 주장과 근거입니다. 다음 구조로 응답하세요:
 
-자연스럽고 간결하게 생각하는 과정을 적어주세요.
-</think>
+1. **상대방 의견에 대한 반응** (1문장)
+   - "네, ~하다는 점은 이해합니다만..."
+   - "~라고 하셨는데요..."
 
-실제 토론 응답을 자연스럽고 대화체로 작성하세요.
+2. **나의 핵심 주장** (1-2문장)
+   - 명확하고 간결하게 입장 표명
+   - 구체적인 이유 포함
 
-**예시:**
-<think>
-환경 문제 얘기가 나왔네. 그런데 경제적 현실도 무시할 수 없잖아? 구체적인 예시를 들면서 균형잡힌 시각을 보여주자.
-</think>
+3. **근거나 예시** (1-2문장)
+   - 실제 사례, 통계, 경험 활용
+   - 구체적이고 설득력 있게
 
-환경 보호가 중요하다는 건 동감해요. 하지만 현실적으로 생각해보면, 일자리도 지켜야 하고 경제도 돌아가야 하잖아요? 
+4. **마무리** (선택사항, 1문장)
+   - 요약이나 반문으로 마무리
 
-예를 들어 독일 같은 경우 재생에너지로 전환하면서 오히려 새로운 일자리를 만들어냈거든요. 환경 vs 경제가 아니라 둘 다 잡는 방법을 찾는게 더 현실적인 것 같아요.
-
-**중요:** 
-1. <think> 태그로 시작하고 </think> 태그로 반드시 닫아주세요.
-2. 사고 과정은 간결하고 자연스럽게 작성하세요.
-3. 실제 응답은 대화하듯이 친근하게 작성하세요.
-4. **비추론 모델의 경우** thinking 태그를 사용하지 않더라도 대체 방식으로 사고과정을 나타내주세요.
+**응답 예시:**
+환경 보호가 중요하다는 건 동감해요. 하지만 현실적으로 생각해보면, 일자리도 지켜야 하고 경제도 돌아가야 하잖아요? 예를 들어 독일은 재생에너지로 전환하면서 오히려 40만개의 새로운 일자리를 만들어냈거든요. 환경과 경제, 둘 다 잡을 수 있다고 봅니다.
 """
         
         # 메시지 구성 (KITECH 패턴 적용)
@@ -399,10 +392,10 @@ class DebateAgent:
             "messages": messages,
             "stream": bool(stream_callback),  # 콜백이 있으면 스트리밍 모드
             "options": {
-                "temperature": self.temperature,
-                "top_p": 0.9,           # KITECH 방식: 응답 품질 향상
-                "repeat_penalty": 1.1,  # 반복 방지
-                "max_tokens": 1000      # 더 긴 응답을 위해 토큰 제한 증가
+                "temperature": 0.8,      # 약간 높여서 더 자연스러운 응답
+                "top_p": 0.95,          # 더 다양한 표현 허용
+                "repeat_penalty": 1.15,  # 반복 방지 강화
+                "max_tokens": 800       # 적절한 길이로 조정
             }
         }
         
@@ -625,21 +618,10 @@ class DebateAgent:
                     await asyncio.sleep(0.15)
         
         # 비추론 모델 대응: thinking 태그가 없는 경우 전체 응답을 처리
+        # 현재는 thinking 기능을 비활성화하고 전체 내용을 content로만 처리
         if not thinking_content and actual_content:
-            # thinking 태그가 없는 모델의 경우 처음 부분을 가상의 thinking으로 처리
-            sentences = actual_content.split('. ')
-            if len(sentences) > 1:
-                # 처음 1-2문장을 thinking으로 사용
-                thinking_part = '. '.join(sentences[:2]) + '.'
-                actual_part = '. '.join(sentences[2:]) if len(sentences) > 2 else sentences[-1]
-                
-                # 가상의 thinking 전송
-                await stream_callback('thinking_start', '')
-                await stream_callback('thinking_chunk', f"비추론 모델 대응: {thinking_part}")
-                await stream_callback('thinking_complete', thinking_part)
-                
-                # 실제 내용 업데이트
-                actual_content = actual_part
+            # thinking 없이 전체 내용을 content로 유지
+            pass
         
         # 기본 메시지 처리 - 실제 컨텐츠가 없을 경우만
         if not actual_content.strip():

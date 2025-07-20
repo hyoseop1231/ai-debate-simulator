@@ -1,0 +1,27 @@
+# AI 토론 시뮬레이터 의존성
+
+# Web Framework
+fastapi>=0.100.0
+uvicorn>=0.22.0
+websockets>=11.0.3
+aiofiles>=23.1.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+sse-starlette>=1.6.0
+
+# HTTP Client
+httpx>=0.24.0
+
+# Scientific Computing
+numpy>=1.24.0
+
+# Logging
+colorlog>=6.7.0
+
+# Type Hints
+typing-extensions>=4.5.0
+
+# Development Tools (optional)
+black>=23.0.0
+pylint>=2.17.0
+pytest>=7.3.0
