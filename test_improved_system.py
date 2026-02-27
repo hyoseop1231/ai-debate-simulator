@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 # 개선된 애플리케이션 모듈
-from final_web_app_improved import app
+from final_web_app import app
 from config.settings import settings
 from utils.security import rate_limiter, session_manager
 from utils.cache import cache_manager, debate_caches

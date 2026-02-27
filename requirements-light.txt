@@ -1,0 +1,34 @@
+# AI 토론 시뮬레이터 - Light 버전 (Ollama 연동용)
+
+# Web Framework
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+websockets>=12.0
+
+# HTTP Client
+httpx>=0.25.0
+
+# Data Models & Validation
+pydantic>=2.5.0
+
+# Environment Management
+python-dotenv>=1.0.0
+
+# HTML Processing
+markdown>=3.5.0
+bleach>=6.1.0
+
+# Type Hints
+typing-extensions>=4.8.0
+
+# JSON Processing
+orjson>=3.9.0
+
+# DateTime
+python-dateutil>=2.8.2
+
+# Scientific Computing (required by debate_evaluator)
+numpy>=1.25.0
+
+# Optional: Performance (macOS/Linux only)
+uvloop>=0.19.0; sys_platform != "win32"

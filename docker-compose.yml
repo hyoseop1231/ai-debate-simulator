@@ -28,9 +28,10 @@ services:
       - debate_cache:/app/cache
     networks:
       - debate-network
-    depends_on:
-      - redis
-      - postgres
+    # Redis/PostgreSQL은 선택적 인프라 (production 프로파일 사용 시만 필요)
+    # depends_on:
+    #   - redis
+    #   - postgres
     restart: unless-stopped
     
     # 리소스 제한
