@@ -165,7 +165,7 @@ class PredictionResult(BaseModel):
 
 
 class RuleAgentProfile(BaseModel):
-    """Profile for a rule-based simulation agent (OASIS)."""
+    """Profile for a rule-based swarm simulation agent."""
 
     agent_id: str = Field(..., description="Unique agent identifier")
     entity_type: str = Field(..., description="Entity type (person, org, etc.)")
@@ -202,9 +202,9 @@ class PipelineConfig(BaseModel):
     forum_config: ForumConfig = Field(
         default_factory=ForumConfig, description="Forum simulation config"
     )
-    enable_oasis: bool = Field(False, description="Enable OASIS social simulation")
-    oasis_agent_count: int = Field(
-        100, ge=1, description="Number of OASIS simulation agents"
+    enable_swarm: bool = Field(False, description="Enable swarm opinion simulation")
+    swarm_agent_count: int = Field(
+        100, ge=1, description="Number of swarm simulation agents"
     )
     report_format: str = Field("html", description="Output report format")
 

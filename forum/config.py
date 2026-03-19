@@ -20,7 +20,7 @@ class ForumEngineConfig:
     allow_cross_team: bool = True
     team_integration: bool = False
 
-    # OASIS env.step pattern
+    # Swarm env.step pattern
     simulate_time: bool = False  # Enable time-based agent selection
     minutes_per_round: int = 60
 

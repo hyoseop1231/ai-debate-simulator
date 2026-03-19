@@ -2,7 +2,7 @@
 
 Replaces DebateController. Agents communicate through log files,
 not direct calls. Moderator (ForumHost) intervenes every N speeches.
-Uses OASIS env.step pattern for agent selection.
+Uses Swarm env.step pattern for agent selection.
 """
 
 from __future__ import annotations
@@ -131,7 +131,7 @@ class ForumEngine:
     log files, not direct calls. Moderator intervenes every
     N speeches via ForumHost.
 
-    OASIS env.step pattern controls agent selection per round.
+    Swarm env.step pattern controls agent selection per round.
     """
 
     def __init__(
@@ -207,7 +207,7 @@ class ForumEngine:
     async def _conduct_round(self) -> Dict[str, Any]:
         """Conduct one round of forum debate.
 
-        OASIS env.step pattern:
+        Swarm env.step pattern:
         1. Select active agents (by activity_level)
         2. Each agent generates response
         3. Write to log files
@@ -290,11 +290,11 @@ class ForumEngine:
             await self.stream_callback("moderation", {"content": moderation})
 
     # ------------------------------------------------------------------
-    # OASIS env.step: agent selection
+    # Swarm env.step: agent selection
     # ------------------------------------------------------------------
 
     def _select_active_agents(self) -> list:
-        """Select agents for this round using OASIS env.step pattern.
+        """Select agents for this round using Swarm env.step pattern.
 
         Uses activity_level as selection probability.
         Guarantees at least 2 agents participate.
