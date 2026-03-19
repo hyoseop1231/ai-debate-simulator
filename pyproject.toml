@@ -1,0 +1,110 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ai-debate-simulator"
+version = "2.0.0"
+description = "AI-powered multi-agent debate simulator with opinion clustering and prediction"
+requires-python = ">=3.11"
+dependencies = [
+    # Web Framework
+    "fastapi>=0.104.1",
+    "uvicorn[standard]>=0.24.0",
+    "websockets>=12.0",
+    "python-multipart>=0.0.6",
+
+    # HTTP Client
+    "httpx>=0.25.0",
+
+    # Data Models & Validation
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+
+    # Template Engine
+    "jinja2>=3.1.2",
+
+    # Scientific Computing
+    "numpy>=1.25.0",
+
+    # Environment
+    "python-dotenv>=1.0.0",
+
+    # System Monitoring
+    "psutil>=5.9.0",
+
+    # NLP & Clustering (v2)
+    "sentence-transformers>=2.2.0",
+    "hdbscan>=0.8.33",
+    "scikit-learn>=1.3.0",
+
+    # Async Database
+    "aiosqlite>=0.19.0",
+
+    # Visualization
+    "plotly>=5.18.0",
+
+    # Data Collection
+    "feedparser>=6.0.0",
+    "arxiv>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "ruff>=0.1.0",
+    "black>=23.0.0",
+    "mypy>=1.7.0",
+]
+
+[project.scripts]
+debate-simulator = "main:main"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "agents",
+    "evaluation",
+    "forum",
+    "clustering",
+    "oasis_sim",
+    "bridge",
+    "report",
+    "models",
+    "api",
+]
+
+[tool.black]
+target-version = ["py311"]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-v --tb=short"

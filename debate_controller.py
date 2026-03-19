@@ -17,8 +17,6 @@ class DebateFormat(Enum):
     """토론 형식"""
     ADVERSARIAL = "adversarial"  # MAD 스타일 대립 토론
     COLLABORATIVE = "collaborative"  # Society of Minds 협력 토론
-    OXFORD = "oxford"  # Oxford 스타일 공식 토론
-    ROUNDTABLE = "roundtable"  # 원탁 토론
     COMPETITIVE = "competitive"  # Agent4Debate 경쟁 토론
     CUSTOM = "custom"  # 커스텀 토론
 
@@ -28,8 +26,6 @@ class DebateConfig:
     topic: str
     format: DebateFormat
     max_rounds: int = 5
-    time_limit_per_round: int = 180  # seconds
-    enable_fact_checking: bool = True
     enable_audience_feedback: bool = False
     evaluation_dimensions: List[str] = None
 
@@ -305,20 +301,10 @@ class DebateController:
         
         for arg in arguments:
             arg_evaluations = {
-                'self_evaluation': {},
                 'opponent_evaluations': [],
                 'average_scores': {}
             }
-            
-            # 자기 평가
-            evaluator = next(
-                (a for a in self.support_agents + self.oppose_agents 
-                 if a.name == arg.agent_name),
-                None
-            )
-            if evaluator:
-                arg_evaluations['self_evaluation'] = evaluator.evaluate_opponent_argument(arg)
-            
+
             # 상대 평가
             opponents = (self.oppose_agents if arg.stance == DebateStance.SUPPORT 
                         else self.support_agents)
@@ -378,7 +364,6 @@ class DebateController:
 Topic: {self.config.topic}
 Format: {self.config.format.value}
 Rounds: {self.config.max_rounds}
-Time per round: {self.config.time_limit_per_round}s
 
 Supporting Team:
 {self._format_team_info(self.support_agents)}

@@ -4,7 +4,7 @@
 
 from typing import List, Dict, Optional, Tuple
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import logging
 import asyncio
@@ -39,7 +39,7 @@ class Argument:
     agent_name: str
     stance: DebateStance
     round_number: int
-    evidence: List[str] = None
+    evidence: List[str] = field(default_factory=list)
     confidence_score: float = 0.0
     quality_score: float = 0.7  # KITECH 방식 품질 점수
 
@@ -437,12 +437,6 @@ class DebateAgent:
         import json
         import asyncio
 
-        print(
-            f"🔑 API Key 확인: {self.openrouter_api_key[:20]}..."
-            if self.openrouter_api_key
-            else "❌ API Key 없음!"
-        )
-
         if not await self._check_api_health():
             self.logger.warning("OpenRouter API 연결 실패")
             return await self._generate_intelligent_fallback_async()
@@ -557,13 +551,13 @@ class DebateAgent:
         self, client, api_url, headers, payload, stream_callback
     ):
         actual_content = ""
-        print(f"🔥 스트리밍 시작: {self.name}")
+        self.logger.debug(f"스트리밍 시작: {self.name}")
 
         async with client.stream(
             "POST", api_url, headers=headers, json=payload
         ) as response:
             response.raise_for_status()
-            print(f"✅ 스트리밍 응답 수신 시작: status={response.status_code}")
+            self.logger.debug(f"스트리밍 응답 수신 시작: status={response.status_code}")
 
             async for line in response.aiter_lines():
                 if not line.strip():
@@ -573,7 +567,7 @@ class DebateAgent:
 
                 data_str = line[6:]
                 if data_str == "[DONE]":
-                    print(f"🏁 스트리밍 완료 신호")
+                    self.logger.debug("스트리밍 완료 신호")
                     break
 
                 try:
@@ -586,7 +580,7 @@ class DebateAgent:
 
                     if chunk:
                         actual_content += chunk
-                        print(f"📝 청크 전송: {len(chunk)}자")
+                        self.logger.debug(f"청크 전송: {len(chunk)}자")
                         await stream_callback("content_chunk", chunk)
                         await asyncio.sleep(0.03)
                 except json.JSONDecodeError:
@@ -854,70 +848,3 @@ class DebateAgent:
             "relevance": 0.9,
             "originality": 0.6,
         }
-
-
-class MultiAgentDebater:
-    """
-    Society of Minds 접근법을 적용한 멀티에이전트 토론 시스템
-    """
-
-    def __init__(self, agents: List[DebateAgent]):
-        self.agents = agents
-        self.debate_history: List[Argument] = []
-
-    def collaborative_argument_generation(
-        self, topic: str, stance: DebateStance, round_number: int
-    ) -> Argument:
-        """
-        여러 에이전트가 협력하여 하나의 강력한 논증 생성
-        """
-        # 각 역할별 에이전트가 초안 생성
-        drafts = []
-        for agent in self.agents:
-            if agent.stance == stance:
-                draft = agent.generate_argument(
-                    topic, self.debate_history, round_number
-                )
-                drafts.append(draft)
-
-        # 최종 논증 통합 및 개선
-        final_argument = self._integrate_arguments(drafts)
-
-        return final_argument
-
-    def _integrate_arguments(self, drafts: List[Argument]) -> Argument:
-        """
-        여러 초안을 통합하여 최종 논증 생성
-        Agent4Debate의 동적 조정 메커니즘 적용
-        """
-        # 각 초안의 장점 추출
-        best_evidence = []
-        best_points = []
-
-        for draft in drafts:
-            if draft.evidence:
-                best_evidence.extend(draft.evidence)
-            best_points.append(draft.content)
-
-        # Writer 에이전트가 최종 통합
-        writer_agent = next(
-            (agent for agent in self.agents if agent.role == AgentRole.WRITER),
-            self.agents[0],
-        )
-
-        integration_prompt = f"""
-Integrate these argument drafts into a single, powerful argument:
-{best_points}
-
-Available evidence:
-{best_evidence}
-
-Create a cohesive, persuasive argument.
-"""
-
-        # 최종 논증 생성
-        final_argument = writer_agent.generate_argument(
-            "Integration", drafts, 0, integration_prompt
-        )
-
-        return final_argument
