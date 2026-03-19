@@ -3,9 +3,10 @@
 # @MX:ANCHOR: [AUTO] External system integration -- OpenClaw platform bridge
 # @MX:REASON: Connects AI Debate Simulator to OpenClaw for Telegram/Discord/Slack/Web delivery
 
+import html as html_module
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -77,7 +78,7 @@ class OpenClawBridge:
             "pipeline_id": result.pipeline_id,
             "status": result.status,
             "topic": result.prediction.topic if result.prediction else "",
-            "saved_at": datetime.utcnow().isoformat(),
+            "saved_at": datetime.now(timezone.utc).isoformat(),
         }
         (base / "context.json").write_text(
             json.dumps(context, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -335,7 +336,7 @@ class DiscordFormatter(BaseFormatter):
             "title": f"토론 결과: {topic}",
             "color": color,
             "fields": fields,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if description:
             embed["description"] = description
@@ -477,11 +478,11 @@ class WebFormatter(BaseFormatter):
 
         # title
         parts.append(f'  <h2 style="border-bottom:2px solid #333;padding-bottom:8px;">'
-                      f'토론 결과: {_html_escape(topic)}</h2>')
+                      f'토론 결과: {html_module.escape(topic)}</h2>')
 
         # summary cards
         parts.append('  <div style="display:flex;gap:16px;margin-bottom:20px;">')
-        parts.append(self._card("우세 의견", _html_escape(dominant)))
+        parts.append(self._card("우세 의견", html_module.escape(dominant)))
         parts.append(self._card("신뢰도", f"{confidence:.0%}"))
         parts.append(self._card("합의 수준", f"{consensus:.0%}"))
         parts.append("  </div>")
@@ -503,7 +504,7 @@ class WebFormatter(BaseFormatter):
                 bar_width = int(cp.weight * 100)
                 parts.append(
                     f"    <tr>"
-                    f'<td style="padding:6px;">{_html_escape(cp.cluster_label)}'
+                    f'<td style="padding:6px;">{html_module.escape(cp.cluster_label)}'
                     f'<div style="background:#e0e0e0;height:6px;border-radius:3px;">'
                     f'<div style="background:#4a90d9;width:{bar_width}%;height:6px;border-radius:3px;"></div>'
                     f"</div></td>"
@@ -519,7 +520,7 @@ class WebFormatter(BaseFormatter):
             parts.append('  <h3>핵심 쟁점</h3>')
             parts.append("  <ol>")
             for issue in issues:
-                parts.append(f"    <li>{_html_escape(issue)}</li>")
+                parts.append(f"    <li>{html_module.escape(issue)}</li>")
             parts.append("  </ol>")
 
         # report
@@ -527,13 +528,13 @@ class WebFormatter(BaseFormatter):
             parts.append('  <h3>결론</h3>')
             parts.append(
                 f'  <div style="background:#f9f9f9;padding:16px;border-radius:8px;'
-                f'white-space:pre-wrap;">{_html_escape(result.report)}</div>'
+                f'white-space:pre-wrap;">{html_module.escape(result.report)}</div>'
             )
 
         # footer
         parts.append(
             f'  <p style="color:#888;font-size:0.85em;margin-top:20px;">'
-            f"Pipeline: {_html_escape(result.pipeline_id)} | Status: {_html_escape(result.status)}"
+            f"Pipeline: {html_module.escape(result.pipeline_id)} | Status: {html_module.escape(result.status)}"
             f"</p>"
         )
         parts.append("</div>")
@@ -552,11 +553,3 @@ class WebFormatter(BaseFormatter):
         )
 
 
-def _html_escape(text: str) -> str:
-    """Escape HTML special characters."""
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )

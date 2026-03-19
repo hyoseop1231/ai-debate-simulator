@@ -246,7 +246,7 @@ ai-debate-simulator/
 ├── agents/                       # Agent 시스템 (debate_agent.py 리팩토링)
 │   ├── __init__.py
 │   ├── base.py                  # BaseLLMAgent (_call_llm, streaming, thinking)
-│   ├── forum_agent.py           # ForumAgent (클러스터 기반 동적 페르소나)
+│   ├── # ForumAgent class lives inside factory.py
 │   ├── factory.py               # PersonaFactory + AgentActivityConfig
 │   └── moderator.py             # ForumHost (별도 모델, anti-homogenization)
 │
@@ -265,7 +265,7 @@ ai-debate-simulator/
 │   ├── __init__.py
 │   ├── engine.py                # BettaFish pub/sub + Swarm env.step
 │   ├── config.py                # ForumConfig + 형식 프리셋
-│   └── transcript.py            # 다채널 포맷 변환
+│   └── # transcript.py (planned) — 다채널 포맷 변환
 │
 ├── swarm/                    # Swarm 시뮬레이션 엔진 (NEW)
 │   ├── __init__.py

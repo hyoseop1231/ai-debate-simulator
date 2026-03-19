@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
 
+MAX_WS_MESSAGE_SIZE = 65536  # 64KB
+ALLOWED_MESSAGE_TYPES = {"heartbeat", "sync", "sync_request", "ping"}
+
 
 @router.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
@@ -59,6 +62,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                     data = await asyncio.wait_for(
                         websocket.receive_text(), timeout=30.0
                     )
+
+                    if len(data) > MAX_WS_MESSAGE_SIZE:
+                        await websocket.close(code=1009, reason="Message too large")
+                        return
 
                     await handle_client_message(
                         websocket, session, data, client_id
@@ -123,7 +130,11 @@ async def handle_client_message(
     """Process incoming client messages."""
     try:
         message = json.loads(data)
-        message_type = message.get("type")
+        message_type = message.get("type", "")
+
+        if message_type not in ALLOWED_MESSAGE_TYPES:
+            logger.debug("Ignored unknown message type: %s from %s", message_type, client_id)
+            return
 
         if message_type == "ping":
             await safe_send_message(

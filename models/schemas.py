@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from forum.config import ForumEngineConfig
 
 
 class DebateStance(str, Enum):
@@ -72,7 +75,7 @@ class ForumPost(BaseModel):
     agent_id: str = Field(..., description="Author agent identifier")
     round: int = Field(..., ge=0, description="Forum round number")
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="Post timestamp"
+        default_factory=lambda: datetime.now(timezone.utc), description="Post timestamp"
     )
     content: str = Field(..., description="Post text content")
     reply_to: Optional[str] = Field(None, description="Parent post id if reply")
@@ -86,32 +89,11 @@ class ForumPost(BaseModel):
     influence_weight: float = Field(1.0, ge=0.0, description="Post influence weight")
 
 
-class ForumConfig(BaseModel):
-    """Configuration for forum debate simulation."""
-
-    max_rounds: int = Field(5, ge=1, description="Maximum number of forum rounds")
-    speech_trigger: str = Field(
-        "round_robin", description="Turn-taking strategy identifier"
-    )
-    convergence_threshold: float = Field(
-        0.1, ge=0.0, le=1.0, description="Threshold for opinion convergence"
-    )
-    confrontation_level: float = Field(
-        0.5, ge=0.0, le=1.0, description="Target confrontation intensity"
-    )
-    allow_cross_team: bool = Field(
-        True, description="Allow cross-cluster interactions"
-    )
-    team_integration: bool = Field(
-        False, description="Enable team-based integration mode"
-    )
-
-
 class LogEntry(BaseModel):
     """Structured log entry for pipeline events."""
 
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="Entry timestamp"
+        default_factory=lambda: datetime.now(timezone.utc), description="Entry timestamp"
     )
     source: str = Field(..., description="Component that produced the entry")
     content: str = Field(..., description="Log message content")
@@ -199,8 +181,9 @@ class PipelineConfig(BaseModel):
     cluster_method: str = Field(
         "hdbscan", description="Clustering algorithm identifier"
     )
-    forum_config: ForumConfig = Field(
-        default_factory=ForumConfig, description="Forum simulation config"
+    forum_config: ForumEngineConfig = Field(
+        default_factory=lambda: __import__("forum.config", fromlist=["ForumEngineConfig"]).ForumEngineConfig(),
+        description="Forum simulation config",
     )
     enable_swarm: bool = Field(False, description="Enable swarm opinion simulation")
     swarm_agent_count: int = Field(
@@ -224,3 +207,13 @@ class PipelineResult(BaseModel):
         None, description="Final prediction"
     )
     report: Optional[str] = Field(None, description="Generated report content")
+
+
+def _rebuild_forward_refs() -> None:
+    """Rebuild Pydantic models that use deferred forward references."""
+    from forum.config import ForumEngineConfig as _ForumEngineConfig
+
+    PipelineConfig.model_rebuild(_types_namespace={"ForumEngineConfig": _ForumEngineConfig})
+
+
+_rebuild_forward_refs()

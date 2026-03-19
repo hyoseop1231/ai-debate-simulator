@@ -2,10 +2,11 @@
 
 import time
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import get_settings
+from utils.security import RateLimiter
 
 
 def setup_cors(app: FastAPI) -> None:
@@ -37,8 +38,12 @@ def setup_security_headers(app: FastAPI) -> None:
             response.headers["X-XSS-Protection"] = "1; mode=block"
             response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
             response.headers["Content-Security-Policy"] = (
-                "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-                "style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+                "default-src 'self'; script-src 'self'; "
+                "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+                "connect-src 'self' ws:"
+            )
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
             )
 
             metrics.record_request()
@@ -48,3 +53,14 @@ def setup_security_headers(app: FastAPI) -> None:
         except Exception as e:
             metrics.record_error()
             raise
+
+
+_rate_limiter = RateLimiter()
+
+
+async def rate_limit_dependency(request: Request) -> None:
+    """FastAPI dependency for rate limiting."""
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, info = _rate_limiter.is_allowed(client_ip, client_ip)
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Too many requests")

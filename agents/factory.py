@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import random
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from agents.base import BaseLLMAgent
@@ -209,7 +209,7 @@ class ForumAgent(BaseLLMAgent):
             post_id=f"post-{uuid.uuid4().hex[:8]}",
             agent_id=self.config.agent_id,
             round=round_number,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             content=content,
             reply_to=None,
             evidence_refs=result.get("evidence", []),

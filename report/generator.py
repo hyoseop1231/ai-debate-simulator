@@ -15,7 +15,7 @@ Report structure (from ARCHITECTURE.md):
 import json
 import logging
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from html import escape as html_escape
 from typing import Dict, List, Optional
 
@@ -353,7 +353,7 @@ class ReportGenerator:
         """Build report metadata."""
         max_round = max((p.round for p in posts), default=0)
         return {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "topic": topic,
             "cluster_count": len(clusters),
             "post_count": len(posts),

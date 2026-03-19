@@ -20,11 +20,13 @@ setup_cors(app)
 
 # Routers
 from api.routes.debate import router as debate_router
+from api.routes.forum import router as forum_router
 from api.routes.health import router as health_router
 from api.routes.models import router as models_router
 from api.ws import router as ws_router
 
 app.include_router(debate_router)
+app.include_router(forum_router)
 app.include_router(health_router)
 app.include_router(models_router)
 app.include_router(ws_router)

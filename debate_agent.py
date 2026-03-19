@@ -576,7 +576,7 @@ class DebateAgent:
                     if not choices:
                         continue
                     delta = choices[0].get("delta", {})
-                    chunk = delta.get("content", "")
+                    chunk = delta.get("content") or ""
 
                     if chunk:
                         actual_content += chunk

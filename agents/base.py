@@ -9,6 +9,9 @@ import os
 import re
 from typing import Any, Callable, Optional
 
+import time
+from typing import ClassVar
+
 import httpx
 
 
@@ -21,6 +24,23 @@ class BaseLLMAgent:
     Provides retry logic, SSE streaming, API health checks,
     thinking-content extraction, and response quality analysis.
     """
+
+    _shared_client: ClassVar[Optional[httpx.AsyncClient]] = None
+    _health_cache: ClassVar[dict[str, tuple[float, bool]]] = {}
+    _health_cache_ttl: ClassVar[float] = 30.0  # seconds
+
+    @classmethod
+    def _get_client(cls) -> httpx.AsyncClient:
+        """Return a shared httpx.AsyncClient, creating one if needed."""
+        if cls._shared_client is None or cls._shared_client.is_closed:
+            cls._shared_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(60.0, connect=15.0),
+                limits=httpx.Limits(
+                    max_keepalive_connections=5, max_connections=10
+                ),
+                follow_redirects=True,
+            )
+        return cls._shared_client
 
     def __init__(
         self,
@@ -50,14 +70,27 @@ class BaseLLMAgent:
             self._logger.warning("OPENROUTER_API_KEY not set")
             return False
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    f"{self.openrouter_api_url}/models",
-                    headers={"Authorization": f"Bearer {self.openrouter_api_key}"},
-                )
-                return response.status_code == 200
+            client = self._get_client()
+            response = await client.get(
+                f"{self.openrouter_api_url}/models",
+                headers={"Authorization": f"Bearer {self.openrouter_api_key}"},
+                timeout=10.0,
+            )
+            return response.status_code == 200
         except Exception:
             return False
+
+    async def _check_api_health_cached(self) -> bool:
+        """TTL-cached wrapper around _check_api_health to avoid per-call latency."""
+        cache_key = self.openrouter_api_url
+        now = time.time()
+        if cache_key in self._health_cache:
+            cached_time, cached_result = self._health_cache[cache_key]
+            if now - cached_time < self._health_cache_ttl:
+                return cached_result
+        result = await self._check_api_health()
+        self._health_cache[cache_key] = (now, result)
+        return result
 
     # ------------------------------------------------------------------
     # Core LLM call with 3-retry + exponential backoff
@@ -78,10 +111,10 @@ class BaseLLMAgent:
         """
         self._logger.debug(
             "API Key check: %s",
-            f"{self.openrouter_api_key[:20]}..." if self.openrouter_api_key else "missing",
+            "set" if self.openrouter_api_key else "missing",
         )
 
-        if not await self._check_api_health():
+        if not await self._check_api_health_cached():
             self._logger.warning("OpenRouter API connection failed")
             return self._default_fallback()
 
@@ -113,53 +146,48 @@ class BaseLLMAgent:
 
         for attempt in range(max_retries):
             try:
-                async with httpx.AsyncClient(
-                    timeout=httpx.Timeout(60.0, connect=15.0),
-                    limits=httpx.Limits(
-                        max_keepalive_connections=5, max_connections=10
-                    ),
-                    follow_redirects=True,
-                ) as client:
-                    if stream_callback:
-                        actual_content = await self._handle_streaming_response(
-                            client, api_url, headers, payload, stream_callback
-                        )
+                client = self._get_client()
 
-                        analysis_result = self._analyze_response_quality(
-                            actual_content
-                        )
+                if stream_callback:
+                    actual_content = await self._handle_streaming_response(
+                        client, api_url, headers, payload, stream_callback
+                    )
 
-                        return {
-                            "content": analysis_result["cleaned_content"],
-                            "evidence": analysis_result["evidence"],
-                            "confidence": analysis_result["confidence"],
-                            "quality_score": analysis_result["quality_score"],
-                        }
-                    else:
-                        response = await client.post(
-                            api_url, headers=headers, json=payload
-                        )
-                        response.raise_for_status()
+                    analysis_result = self._analyze_response_quality(
+                        actual_content
+                    )
 
-                        data = response.json()
-                        content = (
-                            data.get("choices", [{}])[0]
-                            .get("message", {})
-                            .get("content", "")
-                            .strip()
-                        )
+                    return {
+                        "content": analysis_result["cleaned_content"],
+                        "evidence": analysis_result["evidence"],
+                        "confidence": analysis_result["confidence"],
+                        "quality_score": analysis_result["quality_score"],
+                    }
+                else:
+                    response = await client.post(
+                        api_url, headers=headers, json=payload
+                    )
+                    response.raise_for_status()
 
-                        if not content:
-                            raise ValueError("Empty response received")
+                    data = response.json()
+                    content = (
+                        data.get("choices", [{}])[0]
+                        .get("message", {})
+                        .get("content", "")
+                        .strip()
+                    )
 
-                        analysis_result = self._analyze_response_quality(content)
+                    if not content:
+                        raise ValueError("Empty response received")
 
-                        return {
-                            "content": analysis_result["cleaned_content"],
-                            "evidence": analysis_result["evidence"],
-                            "confidence": analysis_result["confidence"],
-                            "quality_score": analysis_result["quality_score"],
-                        }
+                    analysis_result = self._analyze_response_quality(content)
+
+                    return {
+                        "content": analysis_result["cleaned_content"],
+                        "evidence": analysis_result["evidence"],
+                        "confidence": analysis_result["confidence"],
+                        "quality_score": analysis_result["quality_score"],
+                    }
 
             except Exception as e:
                 self._logger.warning("LLM call attempt %d failed: %s", attempt + 1, e)
@@ -212,7 +240,7 @@ class BaseLLMAgent:
                     if not choices:
                         continue
                     delta = choices[0].get("delta", {})
-                    chunk = delta.get("content", "")
+                    chunk = delta.get("content") or ""
 
                     if chunk:
                         actual_content += chunk

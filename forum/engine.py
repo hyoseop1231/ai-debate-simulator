@@ -332,9 +332,8 @@ class ForumEngine:
         host_summary = self.forum_reader.get_latest_host_summary()
         if host_summary:
             consensus_keywords = [
-                "consensus",
-                "agreement",
-                "deadlock",
+                "합의", "수렴", "동의", "consensus", "agreement",
+                "교착", "평행선", "반복", "deadlock", "stalemate",
             ]
             lower_summary = host_summary.lower()
             if any(kw in lower_summary for kw in consensus_keywords):

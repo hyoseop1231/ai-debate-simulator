@@ -5,11 +5,9 @@
 
 import os
 from typing import List, Optional
-try:
-    from pydantic_settings import BaseSettings
-    from pydantic import Field, field_validator
-except ImportError:
-    from pydantic import BaseSettings, Field, validator as field_validator
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
 
 
 
@@ -87,30 +85,34 @@ class Settings(BaseSettings):
     metrics_enabled: bool = Field(default=True, description="메트릭 수집 활성화")
     health_check_interval: int = Field(default=30, description="헬스체크 간격(초)")
 
-    @validator("environment")
-    def validate_environment(cls, v):
+    @field_validator("environment", mode="before")
+    @classmethod
+    def validate_environment(cls, v: str) -> str:
         allowed_envs = ["development", "staging", "production"]
         if v not in allowed_envs:
             raise ValueError(f"Environment must be one of: {allowed_envs}")
         return v
 
-    @validator("log_level")
-    def validate_log_level(cls, v):
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def validate_log_level(cls, v: str) -> str:
         allowed_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         if v.upper() not in allowed_levels:
             raise ValueError(f"Log level must be one of: {allowed_levels}")
         return v.upper()
 
-    @validator("allowed_origins")
-    def validate_origins(cls, v):
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def validate_origins(cls, v: List[str]) -> List[str]:
         if not v:
             raise ValueError("At least one origin must be specified")
         return v
 
-    class Config:
-        env_file = f".env.{os.getenv('ENVIRONMENT', 'development')}"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = {
+        "env_file": f".env.{os.getenv('ENVIRONMENT', 'development')}",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+    }
 
 
 # 환경별 설정 인스턴스

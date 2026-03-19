@@ -8,10 +8,11 @@ import re
 import uuid
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, validator
 
+from api.middleware import rate_limit_dependency
 from api.state import DEBATE_FORMATS, active_debates, metrics
 from debate_agent import AgentRole, Argument, DebateAgent, DebateStance
 from debate_controller import DebateConfig, DebateController, DebateFormat
@@ -99,7 +100,7 @@ async def favicon():
     return HTMLResponse("", status_code=204)
 
 
-@router.post("/api/debate/start")
+@router.post("/api/debate/start", dependencies=[Depends(rate_limit_dependency)])
 async def start_debate(request: DebateRequest, background_tasks: BackgroundTasks):
     """Start a debate session."""
     try:
@@ -217,12 +218,12 @@ async def start_debate(request: DebateRequest, background_tasks: BackgroundTasks
         return {"session_id": session_id, "status": "started"}
 
     except KeyError as e:
-        logger.error("KeyError in start_debate: %s", e)
-        raise HTTPException(status_code=400, detail=f"잘못된 설정값: {str(e)}")
+        logger.error("KeyError in start_debate: %s", e, exc_info=True)
+        raise HTTPException(status_code=400, detail="잘못된 설정값입니다.")
     except Exception as e:
         logger.error("Error in start_debate: %s", e, exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"토론 시작 중 오류 발생: {str(e)}"
+            status_code=500, detail="내부 오류가 발생했습니다."
         )
 
 

@@ -8,20 +8,38 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, field_validator
 
+from api.middleware import rate_limit_dependency
 from forum.config import ForumEngineConfig
 from forum.engine import ForumEngine
 
 router = APIRouter(prefix="/api/forum", tags=["forum"])
 logger = logging.getLogger(__name__)
 
-# Active forum sessions: session_id -> {"engine": ForumEngine, "task": asyncio.Task}
+# Active forum sessions: session_id -> {"engine": ForumEngine, "task": asyncio.Task, "created_at": float}
 active_forums: Dict[str, Dict[str, Any]] = {}
+
+SESSION_TTL = 3600  # 1 hour
+MAX_SESSIONS = 50
+
+
+def _cleanup_expired_sessions() -> None:
+    """Remove expired forum sessions."""
+    now = time.time()
+    expired = [
+        sid for sid, data in active_forums.items()
+        if now - data.get("created_at", now) > SESSION_TTL
+        or data.get("status") == "completed"
+    ]
+    for sid in expired:
+        del active_forums[sid]
 
 
 # ------------------------------------------------------------------
@@ -32,13 +50,35 @@ active_forums: Dict[str, Dict[str, Any]] = {}
 class ForumStartRequest(BaseModel):
     """Request body for starting a new forum debate."""
 
-    topic: str = Field(..., min_length=1, description="Debate topic")
+    topic: str = Field(..., min_length=1, max_length=500, description="Debate topic")
     sources: Optional[List[str]] = Field(
         default=["user"], description="Data sources for seed collection"
     )
     seed_texts: Optional[List[str]] = Field(
-        None, description="User-provided seed texts"
+        None, max_length=10, description="User-provided seed texts"
     )
+
+    @field_validator("topic")
+    @classmethod
+    def sanitize_topic(cls, v: str) -> str:
+        """Remove XSS patterns from topic."""
+        v = re.sub(r'<[^>]*>', '', v)  # Strip HTML tags
+        v = re.sub(r'[<>"\'&]', '', v)  # Remove dangerous chars
+        return v.strip()
+
+    @field_validator("seed_texts")
+    @classmethod
+    def sanitize_seeds(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        """Validate and sanitize seed texts."""
+        if v is None:
+            return v
+        sanitized = []
+        for text in v:
+            if len(text) > 2000:
+                text = text[:2000]
+            text = re.sub(r'<[^>]*>', '', text)
+            sanitized.append(text)
+        return sanitized
     max_rounds: int = Field(5, ge=1, le=20, description="Maximum debate rounds")
     preset: Optional[str] = Field(
         None, description="Config preset: adversarial, collaborative, competitive"
@@ -81,7 +121,7 @@ class ForumStatusResponse(BaseModel):
 # ------------------------------------------------------------------
 
 
-@router.post("/start", response_model=ForumStartResponse)
+@router.post("/start", response_model=ForumStartResponse, dependencies=[Depends(rate_limit_dependency)])
 async def start_forum(request: ForumStartRequest) -> ForumStartResponse:
     """Start a new forum debate pipeline.
 
@@ -90,6 +130,9 @@ async def start_forum(request: ForumStartRequest) -> ForumStartResponse:
     For Phase 2, seed_texts are used directly as cluster key_arguments
     when the clustering engine (L1) is not yet available.
     """
+    # 0. Cleanup expired sessions
+    _cleanup_expired_sessions()
+
     # 1. Build ForumEngineConfig from preset or defaults
     config = _build_config(request)
 
@@ -101,18 +144,19 @@ async def start_forum(request: ForumStartRequest) -> ForumStartResponse:
             model=request.agent_model or "qwen2.5-coder:32b",
         )
     except Exception as e:
-        logger.exception("Failed to create agents: %s", e)
-        raise HTTPException(status_code=500, detail=f"Agent creation failed: {e}")
+        logger.error("Failed to create agents: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="내부 오류가 발생했습니다.")
 
     # 3. Create moderator (different model for anti-homogenization)
     try:
         moderator = _create_moderator(
             model=request.moderator_model or "glm-4.7-flash:latest",
+            agent_model=request.agent_model or "qwen2.5-coder:32b",
             speech_trigger=config.speech_trigger,
         )
     except Exception as e:
-        logger.exception("Failed to create moderator: %s", e)
-        raise HTTPException(status_code=500, detail=f"Moderator creation failed: {e}")
+        logger.error("Failed to create moderator: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="내부 오류가 발생했습니다.")
 
     # 4. Create ForumEngine
     engine = ForumEngine(
@@ -123,7 +167,11 @@ async def start_forum(request: ForumStartRequest) -> ForumStartResponse:
 
     # 5. Launch debate as background task
     task = asyncio.create_task(_run_forum(engine))
-    active_forums[engine.session_id] = {"engine": engine, "task": task}
+    active_forums[engine.session_id] = {
+        "engine": engine,
+        "task": task,
+        "created_at": time.time(),
+    }
 
     preset_name = request.preset or "default"
     logger.info(
@@ -316,7 +364,7 @@ def _default_clusters(topic: str, seed_texts: Optional[List[str]]) -> list:
     ]
 
 
-def _create_moderator(model: str, speech_trigger: int = 5) -> Any:
+def _create_moderator(model: str, agent_model: str, speech_trigger: int = 5) -> Any:
     """Create a ForumHost moderator.
 
     Uses agents.moderator.ForumHost if available, otherwise
@@ -325,7 +373,7 @@ def _create_moderator(model: str, speech_trigger: int = 5) -> Any:
     try:
         from agents.moderator import ForumHost
 
-        return ForumHost(model=model, speech_trigger=speech_trigger)
+        return ForumHost(model=model, debate_agent_model=agent_model, speech_trigger=speech_trigger)
     except ImportError:
         logger.warning(
             "agents.moderator.ForumHost not found, using inline moderator"
