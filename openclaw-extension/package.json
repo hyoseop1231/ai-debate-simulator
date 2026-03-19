@@ -1,0 +1,12 @@
+{
+  "name": "@openclaw/ai-debate",
+  "version": "1.0.0",
+  "description": "AI Debate Simulator integration for OpenClaw",
+  "main": "src/index.js",
+  "openclaw": {
+    "type": "extension",
+    "commands": [
+      {"name": "debate", "description": "Start AI debate simulation"}
+    ]
+  }
+}

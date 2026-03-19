@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 포럼 토론 시뮬레이터</title>
+<style>
+:root {
+  --bg: #f8f9fa;
+  --surface: #ffffff;
+  --surface-alt: #f1f3f5;
+  --border: #dee2e6;
+  --text: #212529;
+  --text-secondary: #868e96;
+  --primary: #4263eb;
+  --primary-hover: #3b5bdb;
+  --accent: #f76707;
+  --success: #2b8a3e;
+  --danger: #e03131;
+  --moderator: #9c36b5;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+  --radius: 8px;
+  --radius-lg: 12px;
+  --transition: 0.2s ease;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1b1e;
+    --surface: #25262b;
+    --surface-alt: #2c2e33;
+    --border: #373a40;
+    --text: #e9ecef;
+    --text-secondary: #909296;
+    --primary: #5c7cfa;
+    --primary-hover: #748ffc;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+  }
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.subtitle {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin-bottom: 32px;
+}
+.back-link {
+  display: inline-block;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+  transition: color var(--transition);
+}
+.back-link:hover { color: var(--primary); }
+
+/* Card */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow);
+}
+.card-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Form */
+label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+}
+input[type="text"],
+input[type="number"],
+textarea,
+select {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color var(--transition);
+  font-family: inherit;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+textarea { resize: vertical; min-height: 80px; }
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 600px) {
+  .form-row { grid-template-columns: 1fr; }
+}
+.form-group { margin-bottom: 16px; }
+.form-hint {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: inherit;
+}
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  width: 100%;
+}
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-outline {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+}
+.btn-outline:hover { background: var(--primary); color: #fff; }
+.btn-sm { padding: 8px 16px; font-size: 0.85rem; }
+
+/* Progress Section */
+#progress-section { display: none; }
+.pipeline-steps {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.step {
+  flex: 1;
+  min-width: 80px;
+  text-align: center;
+  padding: 8px 4px;
+  border-radius: var(--radius);
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+  border: 2px solid transparent;
+  transition: all var(--transition);
+}
+.step.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.step.done {
+  background: var(--success);
+  color: #fff;
+}
+.round-counter {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.round-counter strong { color: var(--text); }
+
+/* Posts feed */
+.posts-feed {
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.post {
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+  border-left: 4px solid var(--border);
+  background: var(--surface-alt);
+  animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.post-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.post-agent {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.post-cluster {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+.post-round {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+.post-content {
+  font-size: 0.9rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.post.moderator {
+  border-left-color: var(--moderator);
+  background: color-mix(in srgb, var(--moderator) 8%, var(--surface-alt));
+}
+.post.moderator .post-agent { color: var(--moderator); }
+
+/* Cluster colors */
+.cluster-0 { background-color: #4263eb; }
+.cluster-1 { background-color: #e03131; }
+.cluster-2 { background-color: #2b8a3e; }
+.cluster-3 { background-color: #f76707; }
+.cluster-4 { background-color: #9c36b5; }
+.cluster-5 { background-color: #0c8599; }
+.cluster-6 { background-color: #e8590c; }
+.border-0 { border-left-color: #4263eb; }
+.border-1 { border-left-color: #e03131; }
+.border-2 { border-left-color: #2b8a3e; }
+.border-3 { border-left-color: #f76707; }
+.border-4 { border-left-color: #9c36b5; }
+.border-5 { border-left-color: #0c8599; }
+.border-6 { border-left-color: #e8590c; }
+
+/* Results Section */
+#results-section { display: none; }
+.dominant-opinion {
+  padding: 20px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  border: 1px solid var(--primary);
+  margin-bottom: 20px;
+}
+.dominant-opinion h3 {
+  font-size: 1.1rem;
+  margin-bottom: 8px;
+}
+.confidence-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-alt);
+  overflow: hidden;
+  margin-top: 8px;
+}
+.confidence-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--primary);
+  transition: width 0.5s ease;
+}
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+}
+.results-table th {
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--surface-alt);
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.results-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.issues-list {
+  list-style: none;
+  margin-bottom: 20px;
+}
+.issues-list li {
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-alt);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+}
+.transcript-toggle {
+  cursor: pointer;
+  user-select: none;
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+.transcript-content {
+  display: none;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--surface-alt);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.7;
+}
+.transcript-content.open { display: block; }
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Error */
+.error-msg {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  color: var(--danger);
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  margin-top: 12px;
+  display: none;
+}
+
+/* Scrollbar */
+.posts-feed::-webkit-scrollbar,
+.transcript-content::-webkit-scrollbar {
+  width: 6px;
+}
+.posts-feed::-webkit-scrollbar-track,
+.transcript-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.posts-feed::-webkit-scrollbar-thumb,
+.transcript-content::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <a href="/" class="back-link">&larr; 메인 페이지로 돌아가기</a>
+  <h1>AI 포럼 토론</h1>
+  <p class="subtitle">다양한 관점의 AI 에이전트가 주제에 대해 토론합니다</p>
+
+  <!-- ==================== INPUT SECTION ==================== -->
+  <div id="input-section">
+    <div class="card">
+      <div class="card-title">토론 설정</div>
+
+      <div class="form-group">
+        <label for="topic">토론 주제 *</label>
+        <input type="text" id="topic" placeholder="예: 인공지능의 일자리 대체에 대한 규제가 필요한가?" maxlength="500" required>
+      </div>
+
+      <div class="form-group">
+        <label for="seeds">시드 텍스트 (선택)</label>
+        <textarea id="seeds" placeholder="각 줄에 하나씩 입력하세요.&#10;예:&#10;AI 규제는 혁신을 방해한다&#10;AI 규제가 없으면 대량 실업이 발생한다" rows="4"></textarea>
+        <div class="form-hint">초기 관점을 제공합니다. 비워두면 기본 찬반 구조로 진행됩니다.</div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="preset">토론 프리셋</label>
+          <select id="preset">
+            <option value="adversarial">대립형 (Adversarial)</option>
+            <option value="collaborative">협력형 (Collaborative)</option>
+            <option value="competitive">경쟁형 (Competitive)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="max-rounds">최대 라운드</label>
+          <input type="number" id="max-rounds" value="5" min="1" max="10">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="agent-model">에이전트 모델</label>
+          <select id="agent-model">
+            <option value="qwen2.5:7b">qwen2.5:7b</option>
+            <option value="qwen2.5-coder:32b" selected>qwen2.5-coder:32b</option>
+            <option value="gpt-oss:120b">gpt-oss:120b</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="moderator-model">모더레이터 모델</label>
+          <select id="moderator-model">
+            <option value="qwen2.5:7b">qwen2.5:7b</option>
+            <option value="glm-4.7-flash:latest" selected>glm-4.7-flash:latest</option>
+            <option value="qwen2.5-coder:32b">qwen2.5-coder:32b</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="n-clusters">클러스터 수</label>
+        <select id="n-clusters">
+          <option value="">자동 (HDBSCAN)</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+        </select>
+      </div>
+
+      <button class="btn btn-primary" id="start-btn" onclick="startForum()">포럼 토론 시작</button>
+      <div class="error-msg" id="error-msg"></div>
+    </div>
+  </div>
+
+  <!-- ==================== PROGRESS SECTION ==================== -->
+  <div id="progress-section">
+    <div class="card">
+      <div class="card-title">
+        <span class="spinner"></span>
+        <span id="progress-title">토론 진행 중...</span>
+      </div>
+
+      <div class="pipeline-steps">
+        <div class="step" id="step-collecting" data-step="collecting">수집</div>
+        <div class="step" id="step-clustering" data-step="clustering">클러스터링</div>
+        <div class="step" id="step-debating" data-step="debating">토론</div>
+        <div class="step" id="step-evaluating" data-step="evaluating">평가</div>
+        <div class="step" id="step-reporting" data-step="reporting">리포트</div>
+      </div>
+
+      <div class="round-counter" id="round-counter"></div>
+
+      <div class="posts-feed" id="posts-feed"></div>
+    </div>
+  </div>
+
+  <!-- ==================== RESULTS SECTION ==================== -->
+  <div id="results-section">
+    <div class="card">
+      <div class="card-title">토론 결과</div>
+
+      <div class="dominant-opinion" id="dominant-opinion">
+        <h3 id="dominant-text"></h3>
+        <div id="confidence-text" style="font-size:0.9rem;color:var(--text-secondary);"></div>
+        <div class="confidence-bar">
+          <div class="confidence-fill" id="confidence-fill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <h4 style="margin-bottom:10px;font-size:0.95rem;">의견 분포</h4>
+      <table class="results-table" id="distribution-table">
+        <thead>
+          <tr><th>클러스터</th><th>비중</th><th>점수</th></tr>
+        </thead>
+        <tbody id="distribution-body"></tbody>
+      </table>
+
+      <h4 style="margin-bottom:10px;font-size:0.95rem;">주요 쟁점</h4>
+      <ul class="issues-list" id="issues-list"></ul>
+
+      <div class="transcript-toggle" id="transcript-toggle" onclick="toggleTranscript()">
+        &#9654; 전체 기록 보기
+      </div>
+      <div class="transcript-content" id="transcript-content"></div>
+
+      <div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap;">
+        <button class="btn btn-outline btn-sm" onclick="downloadReport()">리포트 다운로드 (MD)</button>
+        <button class="btn btn-outline btn-sm" onclick="resetForum()">새 토론 시작</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let sessionId = null;
+let pollTimer = null;
+let lastPostCount = 0;
+let resultData = null;
+let transcriptData = null;
+
+const CLUSTER_COLORS = ['#4263eb','#e03131','#2b8a3e','#f76707','#9c36b5','#0c8599','#e8590c'];
+const STEP_ORDER = ['collecting','clustering','debating','evaluating','reporting'];
+
+function showError(msg) {
+  const el = document.getElementById('error-msg');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 6000);
+}
+
+async function startForum() {
+  const topic = document.getElementById('topic').value.trim();
+  if (!topic) { showError('토론 주제를 입력해주세요.'); return; }
+
+  const seedsRaw = document.getElementById('seeds').value.trim();
+  const seedTexts = seedsRaw ? seedsRaw.split('\n').map(s => s.trim()).filter(Boolean) : null;
+  const preset = document.getElementById('preset').value;
+  const maxRounds = parseInt(document.getElementById('max-rounds').value) || 5;
+  const agentModel = document.getElementById('agent-model').value;
+  const moderatorModel = document.getElementById('moderator-model').value;
+  const nClustersVal = document.getElementById('n-clusters').value;
+  const nClusters = nClustersVal ? parseInt(nClustersVal) : null;
+
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true;
+  btn.textContent = '시작하는 중...';
+
+  try {
+    const body = {
+      topic: topic,
+      max_rounds: maxRounds,
+      preset: preset,
+      agent_model: agentModel,
+      moderator_model: moderatorModel
+    };
+    if (seedTexts && seedTexts.length > 0) body.seed_texts = seedTexts;
+    if (nClusters) body.n_clusters = nClusters;
+
+    const resp = await fetch('/api/forum/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || '토론 시작에 실패했습니다.');
+    }
+
+    const data = await resp.json();
+    sessionId = data.session_id;
+
+    document.getElementById('input-section').style.display = 'none';
+    document.getElementById('progress-section').style.display = 'block';
+    document.getElementById('posts-feed').innerHTML = '';
+    lastPostCount = 0;
+
+    updateStep('collecting');
+    startPolling();
+  } catch (e) {
+    showError(e.message);
+    btn.disabled = false;
+    btn.textContent = '포럼 토론 시작';
+  }
+}
+
+function startPolling() {
+  pollTimer = setInterval(pollStatus, 2000);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function pollStatus() {
+  if (!sessionId) return;
+
+  try {
+    const resp = await fetch(`/api/forum/${sessionId}/status`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    const round = data.current_round || 0;
+    const maxR = data.max_rounds || 5;
+    const total = data.total_posts || 0;
+
+    if (round > 0) {
+      document.getElementById('round-counter').innerHTML =
+        `라운드 <strong>${round}</strong> / ${maxR} &mdash; 총 ${total}건의 발언`;
+    }
+
+    inferStep(data.status, round, maxR);
+
+    if (total > lastPostCount) {
+      await fetchNewPosts();
+    }
+
+    if (!data.is_active || data.status === 'completed' || data.status === 'error') {
+      stopPolling();
+      if (data.status === 'error') {
+        document.getElementById('progress-title').textContent = '오류가 발생했습니다';
+        showError('토론 중 오류가 발생했습니다. 새로 시작해주세요.');
+      } else {
+        await showResults();
+      }
+    }
+  } catch (e) {
+    // Ignore transient fetch errors
+  }
+}
+
+function inferStep(status, round, maxR) {
+  if (status === 'completed') {
+    STEP_ORDER.forEach(s => updateStep(s, true));
+    return;
+  }
+  if (round === 0) {
+    updateStep('collecting');
+  } else if (round <= 1 && lastPostCount === 0) {
+    updateStep('clustering');
+  } else if (round <= maxR) {
+    updateStep('debating');
+  }
+}
+
+function updateStep(currentStep, allDone) {
+  const steps = document.querySelectorAll('.step');
+  let reached = false;
+  steps.forEach(el => {
+    const s = el.dataset.step;
+    el.classList.remove('active', 'done');
+    if (allDone) {
+      el.classList.add('done');
+      return;
+    }
+    if (s === currentStep) {
+      el.classList.add('active');
+      reached = true;
+    } else if (!reached) {
+      el.classList.add('done');
+    }
+  });
+}
+
+async function fetchNewPosts() {
+  try {
+    const resp = await fetch(`/api/forum/${sessionId}/result`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    if (data.status === 'running' || data.status === 'completed' || data.status === 'error') {
+      // Try to extract posts from transcript
+      await fetchTranscriptPosts();
+    }
+  } catch (e) {
+    // fallback
+  }
+}
+
+async function fetchTranscriptPosts() {
+  try {
+    const resp = await fetch(`/api/forum/${sessionId}/transcript`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    transcriptData = data;
+
+    const entries = data.entries || [];
+    const feed = document.getElementById('posts-feed');
+
+    if (entries.length <= lastPostCount) return;
+
+    for (let i = lastPostCount; i < entries.length; i++) {
+      const entry = entries[i];
+      feed.appendChild(createPostElement(entry, i));
+    }
+    lastPostCount = entries.length;
+    feed.scrollTop = feed.scrollHeight;
+  } catch (e) {
+    // ignore
+  }
+}
+
+function createPostElement(entryText, index) {
+  const div = document.createElement('div');
+  div.className = 'post';
+
+  const parsed = parseEntry(entryText);
+
+  if (parsed.isModerator) {
+    div.classList.add('moderator');
+  } else if (parsed.clusterIdx >= 0) {
+    div.classList.add('border-' + (parsed.clusterIdx % 7));
+  }
+
+  const header = document.createElement('div');
+  header.className = 'post-header';
+
+  const agentSpan = document.createElement('span');
+  agentSpan.className = 'post-agent';
+  agentSpan.textContent = parsed.agent || '참여자';
+  header.appendChild(agentSpan);
+
+  if (parsed.cluster) {
+    const clusterSpan = document.createElement('span');
+    clusterSpan.className = 'post-cluster cluster-' + (parsed.clusterIdx % 7);
+    clusterSpan.textContent = parsed.cluster;
+    header.appendChild(clusterSpan);
+  }
+
+  if (parsed.round) {
+    const roundSpan = document.createElement('span');
+    roundSpan.className = 'post-round';
+    roundSpan.textContent = 'R' + parsed.round;
+    header.appendChild(roundSpan);
+  }
+
+  div.appendChild(header);
+
+  const content = document.createElement('div');
+  content.className = 'post-content';
+  content.textContent = parsed.content;
+  div.appendChild(content);
+
+  return div;
+}
+
+function parseEntry(text) {
+  // Try to parse forum.log entries like "[source] content" or "Round N:" etc.
+  const result = { agent: '', cluster: '', clusterIdx: -1, round: 0, content: text, isModerator: false };
+
+  // Pattern: [AgentName] content
+  const bracketMatch = text.match(/^\[([^\]]+)\]\s*(.*)/s);
+  if (bracketMatch) {
+    result.agent = bracketMatch[1];
+    result.content = bracketMatch[2];
+  }
+
+  // Detect moderator
+  if (/moderator|host|진행자/i.test(result.agent)) {
+    result.isModerator = true;
+  }
+
+  // Try to extract cluster from agent name pattern like "view-1_agent" or "support_agent"
+  const clusterMatch = result.agent.match(/view-(\d+)/i);
+  if (clusterMatch) {
+    result.clusterIdx = parseInt(clusterMatch[1]) - 1;
+    result.cluster = 'view-' + clusterMatch[1];
+  } else if (/support/i.test(result.agent)) {
+    result.clusterIdx = 0;
+    result.cluster = 'support';
+  } else if (/oppose/i.test(result.agent)) {
+    result.clusterIdx = 1;
+    result.cluster = 'oppose';
+  }
+
+  // Try to extract round from context
+  const roundMatch = text.match(/[Rr]ound\s*(\d+)|라운드\s*(\d+)/);
+  if (roundMatch) {
+    result.round = parseInt(roundMatch[1] || roundMatch[2]);
+  }
+
+  return result;
+}
+
+async function showResults() {
+  updateStep('reporting', true);
+  document.getElementById('progress-title').textContent = '토론 완료!';
+  document.querySelector('#progress-section .spinner').style.display = 'none';
+
+  try {
+    const resp = await fetch(`/api/forum/${sessionId}/result`);
+    if (!resp.ok) return;
+    resultData = await resp.json();
+
+    document.getElementById('results-section').style.display = 'block';
+
+    // Dominant opinion
+    const dominant = resultData.dominant_opinion || resultData.winner || '결과 분석 중';
+    const confidence = resultData.confidence || resultData.dominant_confidence || 0;
+    document.getElementById('dominant-text').textContent =
+      typeof dominant === 'object' ? (dominant.label || dominant.opinion || JSON.stringify(dominant)) : dominant;
+    document.getElementById('confidence-text').textContent = `신뢰도: ${(confidence * 100).toFixed(1)}%`;
+    document.getElementById('confidence-fill').style.width = (confidence * 100) + '%';
+
+    // Distribution table
+    const distBody = document.getElementById('distribution-body');
+    distBody.innerHTML = '';
+    const clusters = resultData.clusters || resultData.opinion_distribution || resultData.cluster_results || [];
+    if (Array.isArray(clusters)) {
+      clusters.forEach((c, i) => {
+        const tr = document.createElement('tr');
+        const label = c.label || c.cluster || c.name || `클러스터 ${i+1}`;
+        const weight = c.weight || c.proportion || 0;
+        const score = c.score || c.final_score || c.sentiment || 0;
+        tr.innerHTML = `<td><span class="post-cluster cluster-${i%7}" style="font-size:0.75rem;">${label}</span></td>` +
+          `<td>${(weight * 100).toFixed(1)}%</td>` +
+          `<td>${typeof score === 'number' ? score.toFixed(2) : score}</td>`;
+        distBody.appendChild(tr);
+      });
+    }
+
+    // Key issues
+    const issuesList = document.getElementById('issues-list');
+    issuesList.innerHTML = '';
+    const issues = resultData.key_issues || resultData.issues || resultData.key_points || [];
+    if (Array.isArray(issues)) {
+      issues.forEach(issue => {
+        const li = document.createElement('li');
+        li.textContent = typeof issue === 'string' ? issue : (issue.text || issue.description || JSON.stringify(issue));
+        issuesList.appendChild(li);
+      });
+    }
+    if (issues.length === 0) {
+      const li = document.createElement('li');
+      li.textContent = '분석된 쟁점이 없습니다.';
+      issuesList.appendChild(li);
+    }
+
+    // Transcript
+    if (!transcriptData) {
+      const tResp = await fetch(`/api/forum/${sessionId}/transcript`);
+      if (tResp.ok) transcriptData = await tResp.json();
+    }
+    if (transcriptData) {
+      document.getElementById('transcript-content').textContent = transcriptData.transcript || '기록이 없습니다.';
+    }
+  } catch (e) {
+    showError('결과를 불러오는 데 실패했습니다.');
+  }
+}
+
+function toggleTranscript() {
+  const el = document.getElementById('transcript-content');
+  const toggle = document.getElementById('transcript-toggle');
+  el.classList.toggle('open');
+  toggle.innerHTML = el.classList.contains('open') ? '&#9660; 전체 기록 접기' : '&#9654; 전체 기록 보기';
+}
+
+function downloadReport() {
+  if (!resultData) return;
+  let md = `# AI 포럼 토론 결과\n\n`;
+  md += `**세션 ID**: ${sessionId}\n\n`;
+
+  const dominant = resultData.dominant_opinion || resultData.winner || '';
+  const conf = resultData.confidence || resultData.dominant_confidence || 0;
+  md += `## 주요 의견\n${typeof dominant === 'object' ? JSON.stringify(dominant, null, 2) : dominant}\n`;
+  md += `신뢰도: ${(conf * 100).toFixed(1)}%\n\n`;
+
+  const clusters = resultData.clusters || resultData.opinion_distribution || resultData.cluster_results || [];
+  if (clusters.length > 0) {
+    md += `## 의견 분포\n| 클러스터 | 비중 | 점수 |\n|---|---|---|\n`;
+    clusters.forEach((c, i) => {
+      const label = c.label || c.cluster || `클러스터 ${i+1}`;
+      const w = c.weight || c.proportion || 0;
+      const s = c.score || c.final_score || c.sentiment || 0;
+      md += `| ${label} | ${(w*100).toFixed(1)}% | ${typeof s === 'number' ? s.toFixed(2) : s} |\n`;
+    });
+    md += '\n';
+  }
+
+  const issues = resultData.key_issues || resultData.issues || resultData.key_points || [];
+  if (issues.length > 0) {
+    md += `## 주요 쟁점\n`;
+    issues.forEach(issue => {
+      const text = typeof issue === 'string' ? issue : (issue.text || issue.description || JSON.stringify(issue));
+      md += `- ${text}\n`;
+    });
+    md += '\n';
+  }
+
+  if (transcriptData && transcriptData.transcript) {
+    md += `## 전체 기록\n\`\`\`\n${transcriptData.transcript}\n\`\`\`\n`;
+  }
+
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `forum-report-${sessionId}.md`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function resetForum() {
+  stopPolling();
+  sessionId = null;
+  lastPostCount = 0;
+  resultData = null;
+  transcriptData = null;
+
+  document.getElementById('input-section').style.display = 'block';
+  document.getElementById('progress-section').style.display = 'none';
+  document.getElementById('results-section').style.display = 'none';
+  document.getElementById('posts-feed').innerHTML = '';
+  document.getElementById('round-counter').innerHTML = '';
+  document.getElementById('start-btn').disabled = false;
+  document.getElementById('start-btn').textContent = '포럼 토론 시작';
+  document.querySelector('#progress-section .spinner').style.display = 'inline-block';
+  document.getElementById('progress-title').textContent = '토론 진행 중...';
+
+  document.querySelectorAll('.step').forEach(el => el.classList.remove('active', 'done'));
+}
+</script>
+</body>
+</html>

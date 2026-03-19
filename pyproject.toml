@@ -47,6 +47,9 @@ dependencies = [
     # Data Collection
     "feedparser>=6.0.0",
     "arxiv>=2.0.0",
+
+    # Configuration
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

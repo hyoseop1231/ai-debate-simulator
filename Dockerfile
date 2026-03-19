@@ -19,8 +19,13 @@ ENV PYTHONUNBUFFERED=1 \
 
 # 의존성 설치
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml .
+COPY requirements.txt* ./
+RUN if [ -f requirements.txt ]; then \
+        pip install --no-cache-dir -r requirements.txt; \
+    else \
+        pip install --no-cache-dir .; \
+    fi
 
 # 프로덕션 스테이지
 FROM python:3.11-slim as production
@@ -61,7 +66,7 @@ RUN mkdir -p /app/logs && \
 # 설정 파일 권한 설정
 RUN chown -R appuser:appuser /app && \
     chmod -R 755 /app && \
-    chmod -R 644 /app/config/*.py
+    (chmod -R 644 /app/config/*.yaml 2>/dev/null || true)
 
 # 보안 강화: 불필요한 파일 제거
 RUN find /app -name "*.pyc" -delete && \
@@ -93,7 +98,7 @@ VOLUME ["/app/logs"]
 ENTRYPOINT ["dumb-init", "--"]
 
 # 메인 애플리케이션 실행
-CMD ["python3", "final_web_app.py"]
+CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8003"]
 
 # 개발 환경 스테이지
 FROM production as development
@@ -118,7 +123,7 @@ ENV ENVIRONMENT=development \
 USER appuser
 
 # 개발 서버 실행
-CMD ["python3", "final_web_app.py"]
+CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8003"]
 
 # 테스트 환경 스테이지
 FROM development as testing
@@ -133,7 +138,7 @@ CMD ["pytest", "-v", "--cov=.", "--cov-report=html"]
 
 # 레이블 추가 (메타데이터)
 LABEL maintainer="AI Debate Simulator Team" \
-      version="5.0" \
+      version="2.0.0" \
       description="Production-ready AI Debate Simulator" \
       org.opencontainers.image.source="https://github.com/yourusername/ai-debate-simulator" \
       org.opencontainers.image.documentation="https://github.com/yourusername/ai-debate-simulator/README.md" \

@@ -340,9 +340,28 @@ class ForumEngine:
                 logger.info("Moderator declared consensus/deadlock. Terminating.")
                 return True
 
-        # Repetition detection placeholder (Phase 3: sentence-transformers)
-        # TODO: implement embedding similarity check between consecutive rounds
-        # when convergence_threshold is exceeded
+        # Repetition detection via embedding similarity (Phase 3)
+        if self.current_round >= 2:
+            current_round_texts = [
+                p.content for p in self.all_posts if p.round == self.current_round
+            ]
+            prev_round_texts = [
+                p.content for p in self.all_posts if p.round == self.current_round - 1
+            ]
+            if current_round_texts and prev_round_texts:
+                try:
+                    from evaluation.embeddings import EmbeddingSimilarity
+
+                    sim = EmbeddingSimilarity()
+                    if sim.detect_repetition(
+                        current_round_texts,
+                        prev_round_texts,
+                        self.config.convergence_threshold,
+                    ):
+                        logger.info("Repetition detected between rounds. Terminating.")
+                        return True
+                except Exception:
+                    pass  # Embedding not available, skip
 
         return False
 

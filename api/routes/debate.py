@@ -95,6 +95,22 @@ async def home():
         )
 
 
+@router.get("/forum", response_class=HTMLResponse)
+async def forum_page():
+    """Forum mode page - load templates/forum.html."""
+    import pathlib
+
+    template_path = pathlib.Path(__file__).parent.parent.parent / "templates" / "forum.html"
+    try:
+        html_content = template_path.read_text(encoding="utf-8")
+        return HTMLResponse(content=html_content)
+    except FileNotFoundError:
+        return HTMLResponse(
+            content="<h1>Error: templates/forum.html not found</h1>",
+            status_code=500,
+        )
+
+
 @router.get("/favicon.ico")
 async def favicon():
     return HTMLResponse("", status_code=204)
