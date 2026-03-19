@@ -84,7 +84,7 @@ class ForumStartRequest(BaseModel):
         None, description="Config preset: adversarial, collaborative, competitive"
     )
     agent_model: Optional[str] = Field(
-        "qwen2.5-coder:32b", description="LLM model for debate agents"
+        "gpt-oss:20b", description="LLM model for debate agents (gpt-oss:20b+ recommended)"
     )
     moderator_model: Optional[str] = Field(
         "glm-4.7-flash:latest",
@@ -92,6 +92,14 @@ class ForumStartRequest(BaseModel):
     )
     n_clusters: Optional[int] = Field(
         None, description="Number of clusters (None = auto via HDBSCAN)"
+    )
+    nodes: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description="Ollama node list for distributed agents. Format: [{name, api_url, models?, priority?}]",
+    )
+    node_mapping: Optional[Dict[str, str]] = Field(
+        None,
+        description="Cluster-to-node mapping. Format: {'0': 'bigboy1', '1': 'thor'}",
     )
 
 
@@ -141,7 +149,9 @@ async def start_forum(request: ForumStartRequest) -> ForumStartResponse:
         agents = await _create_agents(
             topic=request.topic,
             seed_texts=request.seed_texts,
-            model=request.agent_model or "qwen2.5-coder:32b",
+            model=request.agent_model or "gpt-oss:20b",
+            nodes=request.nodes,
+            node_mapping=request.node_mapping,
         )
     except Exception as e:
         logger.error("Failed to create agents: %s", e, exc_info=True)
@@ -282,8 +292,10 @@ async def _create_agents(
     topic: str,
     seed_texts: Optional[List[str]],
     model: str,
+    nodes: Optional[List[Dict[str, Any]]] = None,
+    node_mapping: Optional[Dict[str, str]] = None,
 ) -> list:
-    """Create debate agents.
+    """Create debate agents, optionally distributed across multiple Ollama nodes.
 
     When clustering engine (L1) is available, this will use
     PersonaFactory.create_agents(clusters). For now, create
@@ -297,10 +309,27 @@ async def _create_agents(
     else:
         clusters = _default_clusters(topic, seed_texts)
 
+    # Build NodeRegistry if multi-node config provided
+    node_registry = None
+    int_mapping = None
+
+    if nodes:
+        from config.nodes import NodeRegistry
+        node_registry = NodeRegistry.from_config(nodes)
+        await node_registry.health_check_all()
+        logger.info("Node health: %s", node_registry.summary())
+
+        if node_mapping:
+            int_mapping = {int(k): v for k, v in node_mapping.items()}
+
     # Use PersonaFactory to create agents
     from agents.factory import PersonaFactory
 
-    factory = PersonaFactory(default_model=model)
+    factory = PersonaFactory(
+        default_model=model,
+        node_registry=node_registry,
+        node_mapping=int_mapping,
+    )
     agents = await factory.create_agents(clusters, use_llm_persona=False)
 
     return agents

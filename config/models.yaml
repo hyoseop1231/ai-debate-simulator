@@ -116,9 +116,45 @@ models:
       context_length: 131072
       recommended_for: ["debate_agent"]
 
-# Default model assignments
+# Default model assignments (gpt-oss:20b+ tier minimum)
 defaults:
-  debate_agent: "qwen2.5-coder:32b"
+  debate_agent: "gpt-oss:20b"
   moderator: "glm-4.7-flash:latest"  # MUST be different from debate_agent (anti-homogenization)
-  agent_factory: "qwen2.5-coder:32b"
-  report_generator: "qwen2.5:7b"
+  agent_factory: "gpt-oss:20b"
+  report_generator: "gpt-oss:20b"
+
+# Multi-node distributed deployment
+nodes:
+  - name: bigboy1
+    api_url: "http://100.115.195.128:11434/v1"
+    api_key: "ollama"
+    models: ["gpt-oss:120b", "qwen3-coder-next:latest", "qwen2.5-coder:32b", "gpt-oss:20b", "glm-4.7-flash:latest"]
+    priority: 0
+
+  - name: bigboy2
+    api_url: "http://100.77.225.102:11434/v1"
+    api_key: "ollama"
+    models: ["gpt-oss:20b"]
+    priority: 1
+
+  - name: thor
+    api_url: "http://100.68.192.59:11434/v1"
+    api_key: "ollama"
+    models: ["gpt-oss:20b"]
+    priority: 2
+
+# Node presets for common deployment patterns
+node_presets:
+  distributed_3way:
+    description: "3노드 분산 — 각 클러스터를 다른 노드에 배정"
+    mapping:
+      "0": bigboy1
+      "1": bigboy2
+      "2": thor
+
+  bigboy_heavy:
+    description: "bigboy1에 120b, 나머지 20b 분산"
+    mapping:
+      "0": bigboy1  # gpt-oss:120b (주력)
+      "1": bigboy2  # gpt-oss:20b
+      "2": thor     # gpt-oss:20b

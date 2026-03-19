@@ -23,30 +23,38 @@ class PersonaFactory:
 
     def __init__(
         self,
-        default_model: str = "qwen2.5-coder:32b",
-        api_url: str = "http://localhost:11434/v1",
-        api_key: str = "ollama",
+        default_model: str = "gpt-oss:20b",
+        api_url: str = None,
+        api_key: str = None,
+        node_registry: Optional["NodeRegistry"] = None,
+        node_mapping: Optional[dict] = None,
     ) -> None:
+        import os
         self.default_model = default_model
-        self.api_url = api_url
-        self.api_key = api_key
+        self.api_url = api_url or os.getenv("OPENROUTER_API_URL", "http://localhost:11434/v1")
+        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY", "ollama")
+        self.node_registry = node_registry
+        self.node_mapping = node_mapping
 
     async def create_agents(
         self,
         clusters: List[ClusterProfile],
         use_llm_persona: bool = True,
     ) -> List[ForumAgent]:
-        """Create one ForumAgent per cluster."""
+        """Create one ForumAgent per cluster, optionally distributed across nodes."""
         agents: list[ForumAgent] = []
+        node_assignments = self._resolve_node_assignments(clusters)
+
         for cluster in clusters:
             if use_llm_persona:
                 persona = await self._generate_persona_llm(cluster)
             else:
                 persona = self._generate_persona_rule(cluster)
 
-            # Clamp temperature: sentiment range is -1..1, so 0.7 + sentiment*0.1
-            # yields 0.6..0.8 which stays in valid range.
             temperature = max(0.0, min(2.0, 0.7 + (cluster.sentiment * 0.1)))
+            api_url, api_key, model = self._get_node_config(
+                cluster.cluster_id, node_assignments
+            )
 
             agent = ForumAgent(
                 config=ForumAgentConfig(
@@ -56,23 +64,42 @@ class PersonaFactory:
                     weight=cluster.weight,
                     persona_prompt=persona,
                     key_arguments=cluster.key_arguments,
-                    model=self.default_model,
+                    model=model,
                     temperature=temperature,
                     activity_level=self._determine_activity(cluster),
                     active_hours=list(range(9, 22)),
                     influence_weight=cluster.weight * 2,
                 ),
-                api_url=self.api_url,
-                api_key=self.api_key,
+                api_url=api_url,
+                api_key=api_key,
             )
             agents.append(agent)
             logger.info(
-                "Created agent: %s (weight=%.2f)",
+                "Created agent: %s → node=%s model=%s (weight=%.2f)",
                 agent.config.agent_id,
+                api_url,
+                model,
                 cluster.weight,
             )
 
         return agents
+
+    def _resolve_node_assignments(self, clusters: List[ClusterProfile]) -> Optional[dict]:
+        """Resolve which node each cluster's agent should use."""
+        if self.node_registry is None:
+            return None
+        if self.node_mapping:
+            return self.node_registry.assign_by_mapping(self.node_mapping)
+        nodes = self.node_registry.assign_round_robin(len(clusters))
+        return {c.cluster_id: nodes[i] for i, c in enumerate(clusters)}
+
+    def _get_node_config(self, cluster_id: int, assignments: Optional[dict]) -> tuple:
+        """Return (api_url, api_key, model) for a given cluster."""
+        if assignments is None or cluster_id not in assignments:
+            return self.api_url, self.api_key, self.default_model
+        node = assignments[cluster_id]
+        model = node.models[0] if node.models else self.default_model
+        return node.api_url, node.api_key, model
 
     async def _generate_persona_llm(self, cluster: ClusterProfile) -> str:
         """Generate persona using LLM (1 call per cluster)."""
