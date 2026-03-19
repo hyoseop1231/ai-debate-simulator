@@ -21,7 +21,7 @@ class SecureDebateRequest(BaseModel):
     """보안이 강화된 토론 요청 모델"""
     
     topic: str = Field(..., min_length=5, max_length=500, description="토론 주제")
-    format: str = Field(..., regex="^(adversarial|collaborative|competitive|custom)$", description="토론 형식")
+    format: str = Field(..., pattern="^(adversarial|collaborative|competitive|custom)$", description="토론 형식")
     max_rounds: int = Field(default=5, ge=1, le=10, description="최대 라운드 수")
     model: str = Field(default="llama3.2:3b", description="사용할 AI 모델")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="모델 온도")
