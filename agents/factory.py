@@ -50,7 +50,7 @@ class PersonaFactory:
 
             agent = ForumAgent(
                 config=ForumAgentConfig(
-                    agent_id=f"agent-{cluster.cluster_id}-{cluster.label}",
+                    agent_id=self._safe_agent_id(cluster),
                     cluster_id=cluster.cluster_id,
                     label=cluster.label,
                     weight=cluster.weight,
@@ -146,6 +146,14 @@ class PersonaFactory:
             f"  - 상대의 주장에 논리적으로 반박하세요.\n"
             f"  - 3~5문장으로 간결하되 설득력 있게 말하세요."
         )
+
+    @staticmethod
+    def _safe_agent_id(cluster: ClusterProfile) -> str:
+        """Create filesystem-safe agent ID from cluster."""
+        import re
+        safe_label = re.sub(r'[^a-zA-Z0-9가-힣_-]', '_', cluster.label)
+        safe_label = re.sub(r'_+', '_', safe_label).strip('_')[:30]
+        return f"agent-{cluster.cluster_id}-{safe_label or 'cluster'}"
 
     def _determine_activity(self, cluster: ClusterProfile) -> float:
         """Determine activity level from cluster characteristics.

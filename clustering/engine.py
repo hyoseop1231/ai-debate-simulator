@@ -212,9 +212,9 @@ class OpinionClusterEngine:
         # 4. Key arguments: sentences closest to centroid
         key_arguments = self._extract_key_arguments(texts, cluster_embeddings, centroid)
 
-        # 5. Label from top keywords
+        # 5. Label from top keywords (filesystem-safe, no slashes)
         label_words = keywords[:3] if keywords else [f"cluster-{cluster_id}"]
-        label = " / ".join(label_words)
+        label = "-".join(w.strip() for w in label_words if w.strip())
 
         # 6. Sentiment
         sentiment = self._calculate_sentiment(texts)
@@ -314,7 +314,7 @@ class OpinionClusterEngine:
         """Create a profile for a single-document cluster."""
         text = f"{doc.title} {doc.content}"
         keywords = self._extract_keywords([text], top_n=5)
-        label = " / ".join(keywords[:3]) if keywords else doc.title[:50]
+        label = "-".join(w.strip() for w in keywords[:3] if w.strip()) if keywords else doc.title[:50]
         embedding = self.embedder.embed_single(text)
         sentiment = self._calculate_sentiment([text])
 
