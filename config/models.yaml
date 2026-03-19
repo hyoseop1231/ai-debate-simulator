@@ -1,0 +1,124 @@
+# config/models.yaml — LLM Model Registry
+# Externalizes the hardcoded OPENROUTER_MODELS dict from debate_agent.py
+
+models:
+  # Local Ollama models (Bigboy server)
+  ollama:
+    - id: "qwen2.5-coder:32b"
+      name: "Qwen2.5 Coder 32B"
+      provider: "Bigboy/Ollama"
+      context_length: 32768
+      size: "19.8GB"
+      recommended_for: ["debate_agent", "agent_factory"]
+
+    - id: "gpt-oss:20b"
+      name: "GPT-OSS 20B"
+      provider: "Bigboy/Ollama"
+      context_length: 32768
+      size: "13.8GB"
+      recommended_for: ["debate_agent"]
+
+    - id: "glm-4.7-flash:latest"
+      name: "GLM 4.7 Flash"
+      provider: "Bigboy/Ollama"
+      context_length: 32768
+      size: "19GB"
+      recommended_for: ["moderator"]
+
+    - id: "qwen2.5:7b"
+      name: "Qwen2.5 7B"
+      provider: "Bigboy/Ollama"
+      context_length: 32768
+      size: "4.7GB"
+      recommended_for: ["report_generator"]
+
+    - id: "qwen2.5vl:7b"
+      name: "Qwen2.5 VL 7B"
+      provider: "Bigboy/Ollama"
+      context_length: 32768
+      size: "6GB"
+      recommended_for: []
+
+    - id: "qwen2.5:1.5b"
+      name: "Qwen2.5 1.5B"
+      provider: "Bigboy/Ollama"
+      context_length: 32768
+      size: "986MB"
+      recommended_for: []
+
+    - id: "qwen3-vl:2b"
+      name: "Qwen3 VL 2B"
+      provider: "Bigboy/Ollama"
+      context_length: 32768
+      size: "1.9GB"
+      recommended_for: []
+
+    - id: "gpt-oss:120b"
+      name: "GPT-OSS 120B"
+      provider: "Bigboy/Ollama"
+      context_length: 32768
+      size: "65GB"
+      recommended_for: ["debate_agent", "moderator"]
+
+  # OpenRouter cloud models (API key required)
+  openrouter:
+    - id: "openai/gpt-4.1"
+      name: "GPT-4.1"
+      provider: "OpenAI"
+      context_length: 128000
+      recommended_for: ["debate_agent", "moderator"]
+
+    - id: "openai/o3"
+      name: "OpenAI o3"
+      provider: "OpenAI"
+      context_length: 200000
+      recommended_for: ["debate_agent"]
+
+    - id: "anthropic/claude-sonnet-4"
+      name: "Claude Sonnet 4"
+      provider: "Anthropic"
+      context_length: 200000
+      recommended_for: ["debate_agent", "moderator"]
+
+    - id: "anthropic/claude-3.5-sonnet"
+      name: "Claude 3.5 Sonnet"
+      provider: "Anthropic"
+      context_length: 200000
+      recommended_for: ["debate_agent", "moderator"]
+
+    - id: "google/gemini-2.5-flash-preview"
+      name: "Gemini 2.5 Flash"
+      provider: "Google"
+      context_length: 1000000
+      recommended_for: ["debate_agent", "report_generator"]
+
+    - id: "google/gemini-2.0-flash-001"
+      name: "Gemini 2.0 Flash"
+      provider: "Google"
+      context_length: 1000000
+      recommended_for: ["debate_agent"]
+
+    - id: "meta-llama/llama-3.3-70b-instruct"
+      name: "Llama 3.3 70B"
+      provider: "Meta"
+      context_length: 131072
+      recommended_for: ["debate_agent"]
+
+    - id: "deepseek/deepseek-chat-v3-0324"
+      name: "DeepSeek V3"
+      provider: "DeepSeek"
+      context_length: 131072
+      recommended_for: ["debate_agent"]
+
+    - id: "qwen/qwen-2.5-72b-instruct"
+      name: "Qwen 2.5 72B"
+      provider: "Alibaba"
+      context_length: 131072
+      recommended_for: ["debate_agent"]
+
+# Default model assignments
+defaults:
+  debate_agent: "qwen2.5-coder:32b"
+  moderator: "glm-4.7-flash:latest"  # MUST be different from debate_agent (anti-homogenization)
+  agent_factory: "qwen2.5-coder:32b"
+  report_generator: "qwen2.5:7b"

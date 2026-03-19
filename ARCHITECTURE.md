@@ -93,8 +93,8 @@
     │  │  - ForumReader: [HOST] → 에이전트 프롬프트   │         │
     │  └─────────────────────────────────────────────┘         │
     │                                                           │
-    │  OASIS 패턴 자체 구현 (MiroFish env.step 영감):            │
-    │  - oasis_sim/engine.py (~200줄, 의존성 제로)             │
+    │  Swarm 시뮬레이션 엔진 (MiroFish env.step 영감):            │
+    │  - swarm/engine.py (~200줄, 의존성 제로)             │
     │  - agent graph + async step loop + SQLite trace          │
     │  - active_hours 기반 에이전트 필터링                      │
     │  - activity_level 가중 선택                               │
@@ -263,11 +263,11 @@ ai-debate-simulator/
 │
 ├── forum/                        # Forum Engine (NEW, debate_controller.py 대체)
 │   ├── __init__.py
-│   ├── engine.py                # BettaFish pub/sub + OASIS env.step
+│   ├── engine.py                # BettaFish pub/sub + Swarm env.step
 │   ├── config.py                # ForumConfig + 형식 프리셋
 │   └── transcript.py            # 다채널 포맷 변환
 │
-├── oasis_sim/                    # OASIS 패턴 자체 구현 (NEW)
+├── swarm/                    # Swarm 시뮬레이션 엔진 (NEW)
 │   ├── __init__.py
 │   ├── engine.py                # async step loop (~200줄)
 │   ├── rule_agent.py            # RuleAgent (LLM 없음, 규칙 기반)
@@ -500,7 +500,7 @@ class ForumPost(BaseModel):
     influence_weight: float
 ```
 
-### OASIS 패턴 자체 구현 (oasis_sim/)
+### Swarm 시뮬레이션 자체 구현 (swarm/)
 
 camel-oasis 패키지는 소셜미디어(Twitter/Reddit)에 하드코딩되어 커스텀 환경 생성이 불가.
 MiroFish OASIS의 핵심 패턴만 추출하여 ~200줄로 자체 구현한다. **외부 의존성 제로.**
@@ -518,9 +518,9 @@ MiroFish OASIS의 핵심 패턴만 추출하여 ~200줄로 자체 구현한다. 
 #### 핵심 구조
 
 ```python
-# oasis_sim/engine.py (~200줄)
+# swarm/engine.py (~200줄)
 class DebateSimulation:
-    """OASIS env.step() 패턴의 토론 최적화 자체 구현"""
+    """Swarm env.step() 패턴의 토론 최적화 자체 구현"""
 
     def __init__(self, agent_graph: AgentGraph, db_path: str):
         self.agent_graph = agent_graph
@@ -546,7 +546,7 @@ class DebateSimulation:
 ```
 
 ```python
-# oasis_sim/rule_agent.py
+# swarm/rule_agent.py
 class RuleAgent:
     """LLM 호출 없는 규칙 기반 에이전트 (MiroFish 핵심 트릭)"""
 
@@ -565,7 +565,7 @@ class RuleAgent:
 ```
 
 ```python
-# oasis_sim/agent_graph.py
+# swarm/agent_graph.py
 class AgentGraph:
     """에이전트 관계 그래프 (igraph 없이 dict 기반)"""
 
@@ -627,11 +627,11 @@ class AgentGraph:
 | LLM 대표 에이전트 3~7개 | 기존 ForumEngine 공유 |
 | SQLite trace | ~10MB per simulation |
 
-**OASIS 시뮬레이션은 선택적(optional)이다.** ForumEngine 토론 결과만으로도 L4 평가 + L5 리포트 생성이 가능하다. OASIS는 대규모 여론 검증이 필요할 때 추가 레이어로 사용한다.
+**Swarm 시뮬레이션은 선택적(optional)이다.** ForumEngine 토론 결과만으로도 L4 평가 + L5 리포트 생성이 가능하다. Swarm은 대규모 여론 검증이 필요할 때 추가 레이어로 사용한다.
 
-### ForumEngine에서의 에이전트 선택 (OASIS 패턴 적용)
+### ForumEngine에서의 에이전트 선택 (Swarm 패턴 적용)
 
-토론 매 라운드에서도 OASIS 패턴을 적용하여 에이전트 선택:
+토론 매 라운드에서도 Swarm 패턴을 적용하여 에이전트 선택:
 
 ```
 매 라운드:
@@ -814,7 +814,7 @@ extensions/ai-debate/
 
 ## Phase별 구현 로드맵
 
-### Phase 1: Foundation Extraction (1~2주)
+### Phase 1: Foundation Extraction (1~2주) -- COMPLETED
 
 죽은 코드 제거, 구조 분리, 테스트 인프라.
 
@@ -830,7 +830,7 @@ extensions/ai-debate/
 
 **완료 기준**: `python main.py`로 기존 기능 100% 동작. 죽은 코드 0줄.
 
-### Phase 2: New Core (2~3주)
+### Phase 2: New Core (2~3주) -- COMPLETED
 
 Clustering + ForumEngine + Agent Factory.
 
@@ -846,18 +846,18 @@ Clustering + ForumEngine + Agent Factory.
 
 **완료 기준**: 주제 입력 → 클러스터 3~7개 → 대표 에이전트 → ForumEngine 3라운드 토론.
 
-### Phase 3: OASIS 시뮬레이션 + 평가 강화 (1~2주)
+### Phase 3: Swarm 시뮬레이션 + 평가 강화 (1~2주) -- COMPLETED
 
-OASIS 패턴 자체 구현, 평가 강화, 예측.
+Swarm 시뮬레이션 자체 구현, 평가 강화, 예측.
 
 | 태스크 | 산출물 |
 |--------|--------|
-| `oasis_sim/engine.py` | async step loop (~200줄, 의존성 제로) |
-| `oasis_sim/rule_agent.py` | RuleAgent (LLM 없음, 규칙 기반 투표) |
-| `oasis_sim/agent_graph.py` | 클러스터→에이전트 그래프 (비례 생성) |
-| `oasis_sim/trace.py` | SQLite 행동 추적 + 여론 분포 집계 |
+| `swarm/engine.py` | async step loop (~200줄, 의존성 제로) |
+| `swarm/rule_agent.py` | RuleAgent (LLM 없음, 규칙 기반 투표) |
+| `swarm/agent_graph.py` | 클러스터→에이전트 그래프 (비례 생성) |
+| `swarm/trace.py` | SQLite 행동 추적 + 여론 분포 집계 |
 | `evaluation/embeddings.py` | 임베딩 similarity/relevance/originality |
-| `evaluation/predictor.py` | 클러스터 가중 예측 + OASIS 결과 통합 |
+| `evaluation/predictor.py` | 클러스터 가중 예측 + Swarm 결과 통합 |
 
 **완료 기준**: 100개 규칙 에이전트 시뮬레이션 < 10초. 토론 결과 vs 시뮬레이션 결과 비교 리포트 출력.
 
@@ -925,11 +925,11 @@ GB10 Node 1 (120GB):
 
 GB10 Node 2 (120GB):
   ├─ Ollama: ForumHost 모더레이터 (다른 계열 모델)
-  ├─ OASIS 시뮬레이션 (~100MB, CPU only, LLM 불필요)
+  ├─ Swarm 시뮬레이션 (~100MB, CPU only, LLM 불필요)
   └─ 시스템 + 앱
 
 동시 LLM 에이전트: 최대 20~30
-OASIS 규칙 에이전트: 100~500 (LLM 제로, CPU only)
+Swarm 규칙 에이전트: 100~500 (LLM 제로, CPU only)
 ```
 
 ---
@@ -939,5 +939,5 @@ OASIS 규칙 에이전트: 100~500 (LLM 제로, CPU only)
 | 레퍼런스 | 흡수한 것 | 흡수하지 않은 것 |
 |----------|-----------|------------------|
 | BettaFish ForumEngine | 로그 기반 pub/sub, 별도 모델 모더레이터, 발언 N개 누적 후 개입, ForumReader 프롬프트 주입 | 웨이보/샤오홍슈 크롤러 (중국 소셜미디어 특화), BERT/GPT-2 파인튜닝 감성분석 |
-| MiroFish OASIS | 듀얼 티어 에이전트 (규칙+LLM), activity_level/active_hours/influence_weight, env.step() 패턴 **자체 구현** (~200줄, oasis_sim/), 에이전트 그래프, SQLite trace, ReACT 리포트 생성 | camel-oasis 패키지 직접 사용 (소셜미디어 하드코딩, 2~4GB 의존성), Zep Cloud 장기 기억, GraphRAG 풀 구현, TwitterEnv/RedditEnv |
+| MiroFish OASIS | 듀얼 티어 에이전트 (규칙+LLM), activity_level/active_hours/influence_weight, env.step() 패턴 **자체 구현** (~200줄, swarm/), 에이전트 그래프, SQLite trace, ReACT 리포트 생성 | camel-oasis 패키지 직접 사용 (소셜미디어 하드코딩, 2~4GB 의존성), Zep Cloud 장기 기억, GraphRAG 풀 구현, TwitterEnv/RedditEnv |
 | OpenClaw | Extension 브릿지, 멀티채널 전달, 워크스페이스 메모리 연동 | ACP 멀티에이전트 라우팅 (향후 확장), Canvas UI |
