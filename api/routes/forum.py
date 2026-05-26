@@ -2,6 +2,11 @@
 
 Provides REST endpoints to start forum debates, poll status,
 retrieve results, and read transcripts.
+
+Phase 2.5: Integrated swarm simulation for opinion prediction.
+- ForumEngine runs LLM-based debate (few agents)
+- Swarm runs rule-based simulation (hundreds of agents)
+- Results are merged for final prediction
 """
 
 from __future__ import annotations
@@ -19,11 +24,16 @@ from pydantic import BaseModel, Field, field_validator
 from api.middleware import rate_limit_dependency
 from forum.config import ForumEngineConfig
 from forum.engine import ForumEngine
+from forum.pipeline import (
+    extract_debate_scores as pipeline_extract_scores,
+    merge_results as pipeline_merge_results,
+    run_full_pipeline,
+)
 
 router = APIRouter(prefix="/api/forum", tags=["forum"])
 logger = logging.getLogger(__name__)
 
-# Active forum sessions: session_id -> {"engine": ForumEngine, "task": asyncio.Task, "created_at": float}
+# Active forum sessions: session_id -> {"engine": ForumEngine, "task": asyncio.Task, "created_at": float, ...}
 active_forums: Dict[str, Dict[str, Any]] = {}
 
 SESSION_TTL = 3600  # 1 hour
@@ -58,13 +68,16 @@ class ForumStartRequest(BaseModel):
         None, max_length=10, description="User-provided seed texts"
     )
 
-    @field_validator("topic")
+    @field_validator("topic", mode="before")
     @classmethod
     def sanitize_topic(cls, v: str) -> str:
-        """Remove XSS patterns from topic."""
+        """Remove XSS patterns from topic and reject whitespace-only values."""
         v = re.sub(r'<[^>]*>', '', v)  # Strip HTML tags
         v = re.sub(r'[<>"\'&]', '', v)  # Remove dangerous chars
-        return v.strip()
+        v = v.strip()
+        if not v:
+            raise ValueError("Debate topic cannot be empty or whitespace only.")
+        return v
 
     @field_validator("seed_texts")
     @classmethod
@@ -101,6 +114,22 @@ class ForumStartRequest(BaseModel):
         None,
         description="Cluster-to-node mapping. Format: {'0': 'bigboy1', '1': 'thor'}",
     )
+    enable_swarm: bool = Field(
+        True,
+        description="Enable swarm opinion simulation after forum debate",
+    )
+    swarm_agent_count: int = Field(
+        100,
+        ge=10,
+        le=1000,
+        description="Number of swarm simulation agents (rule-based, no LLM)",
+    )
+    swarm_steps: int = Field(
+        20,
+        ge=5,
+        le=100,
+        description="Number of swarm simulation steps",
+    )
 
 
 class ForumStartResponse(BaseModel):
@@ -133,10 +162,13 @@ class ForumStatusResponse(BaseModel):
 async def start_forum(request: ForumStartRequest) -> ForumStartResponse:
     """Start a new forum debate pipeline.
 
-    Full pipeline: collect -> cluster -> create agents -> forum debate.
+    Full pipeline: collect -> cluster -> create agents -> forum debate -> swarm simulation.
 
     For Phase 2, seed_texts are used directly as cluster key_arguments
     when the clustering engine (L1) is not yet available.
+
+    Phase 2.5: After forum debate completes, swarm simulation runs
+    to predict final opinion distribution.
     """
     # 0. Cleanup expired sessions
     _cleanup_expired_sessions()
@@ -144,11 +176,22 @@ async def start_forum(request: ForumStartRequest) -> ForumStartResponse:
     # 1. Build ForumEngineConfig from preset or defaults
     config = _build_config(request)
 
-    # 2. Create representative agents from seed texts or defaults
+    # 2. Determine LLM speaker count based on available nodes
+    llm_speaker_count = _determine_llm_speaker_count(request.nodes, request.seed_texts)
+    
+    # 3. Build clusters from seed texts or defaults
+    if request.seed_texts and len(request.seed_texts) >= llm_speaker_count:
+        clusters = _clusters_from_seeds(request.seed_texts[:llm_speaker_count])
+    elif request.seed_texts and len(request.seed_texts) >= 2:
+        clusters = _extend_clusters_from_seeds(request.seed_texts, llm_speaker_count)
+    else:
+        clusters = _default_clusters(config.topic, request.seed_texts, llm_speaker_count)
+
+    # 4. Create representative agents from clusters
     try:
-        agents = await _create_agents(
-            topic=request.topic,
-            seed_texts=request.seed_texts,
+        agents, node_registry = await _create_agents_with_registry(
+            topic=config.topic,
+            clusters=clusters,
             model=request.agent_model or "gpt-oss:20b",
             nodes=request.nodes,
             node_mapping=request.node_mapping,
@@ -157,7 +200,7 @@ async def start_forum(request: ForumStartRequest) -> ForumStartResponse:
         logger.error("Failed to create agents: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="내부 오류가 발생했습니다.")
 
-    # 3. Create moderator (different model for anti-homogenization)
+    # 5. Create moderator (different model for anti-homogenization)
     try:
         moderator = _create_moderator(
             model=request.moderator_model or "glm-4.7-flash:latest",
@@ -168,33 +211,49 @@ async def start_forum(request: ForumStartRequest) -> ForumStartResponse:
         logger.error("Failed to create moderator: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="내부 오류가 발생했습니다.")
 
-    # 4. Create ForumEngine
+    # 6. Create ForumEngine
     engine = ForumEngine(
         config=config,
         agents=agents,
         moderator=moderator,
     )
 
-    # 5. Launch debate as background task
-    task = asyncio.create_task(_run_forum(engine))
+    # 7. Launch debate as background task with swarm integration
+    task = asyncio.create_task(
+        _run_forum_with_swarm(
+            engine=engine,
+            clusters=clusters,
+            enable_swarm=request.enable_swarm,
+            swarm_agent_count=request.swarm_agent_count,
+            swarm_steps=request.swarm_steps,
+        )
+    )
     active_forums[engine.session_id] = {
         "engine": engine,
         "task": task,
         "created_at": time.time(),
+        "clusters": clusters,
+        "swarm_config": {
+            "enable_swarm": request.enable_swarm,
+            "swarm_agent_count": request.swarm_agent_count,
+            "swarm_steps": request.swarm_steps,
+        },
     }
 
     preset_name = request.preset or "default"
     logger.info(
-        "Forum started: session=%s topic=%s preset=%s",
+        "Forum started: session=%s topic=%s preset=%s llm_speakers=%d swarm=%s",
         engine.session_id,
-        request.topic,
+        config.topic,
         preset_name,
+        len(agents),
+        "enabled" if request.enable_swarm else "disabled",
     )
 
     return ForumStartResponse(
         session_id=engine.session_id,
         status="running",
-        topic=request.topic,
+        topic=config.topic,
         max_rounds=config.max_rounds,
         preset=preset_name,
     )
@@ -219,6 +278,7 @@ async def get_forum_result(session_id: str) -> Dict[str, Any]:
 
     Returns full result if debate is completed, or partial
     result with current status if still running.
+    Includes swarm prediction if available.
     """
     session = active_forums.get(session_id)
     if not session:
@@ -236,7 +296,12 @@ async def get_forum_result(session_id: str) -> Dict[str, Any]:
             "message": "Debate is still in progress. Poll /status for updates.",
         }
 
-    # Debate completed or errored
+    # Debate completed or errored - check for cached result with swarm
+    cached_result = session.get("final_result")
+    if cached_result:
+        return cached_result
+
+    # Build result from engine
     return engine._build_result()
 
 
@@ -288,27 +353,149 @@ def _build_config(request: ForumStartRequest) -> ForumEngineConfig:
     return config
 
 
-async def _create_agents(
+def _determine_llm_speaker_count(
+    nodes: Optional[List[Dict[str, Any]]] = None,
+    seed_texts: Optional[List[str]] = None,
+) -> int:
+    """Determine number of LLM speakers based on available nodes.
+
+    Rules:
+    - Base: 2 speakers (minimum for debate)
+    - Each additional node adds 1 speaker (up to max 6)
+    - Seed texts can also influence count
+    """
+    base_count = 2
+    
+    if nodes:
+        # Add 1 speaker per node, capped at 6
+        node_count = len(nodes)
+        base_count = min(6, base_count + node_count - 1)
+    
+    # If more seed texts provided, use that count (capped)
+    if seed_texts and len(seed_texts) > base_count:
+        base_count = min(6, len(seed_texts))
+    
+    return base_count
+
+
+def _clusters_from_seeds(seed_texts: List[str]) -> List["ClusterProfile"]:
+    """Build synthetic ClusterProfile list from user seed texts."""
+    from models.schemas import ClusterProfile
+
+    clusters: List[ClusterProfile] = []
+    weight = 1.0 / len(seed_texts)
+
+    for i, text in enumerate(seed_texts):
+        label = f"view-{i + 1}"
+        sentiment = 0.3 if i % 2 == 0 else -0.3
+
+        clusters.append(
+            ClusterProfile(
+                cluster_id=i,
+                label=label,
+                weight=weight,
+                document_count=1,
+                key_arguments=[text],
+                keywords=text.split()[:5],
+                sentiment=sentiment,
+            )
+        )
+
+    return clusters
+
+
+def _extend_clusters_from_seeds(
+    seed_texts: List[str], target_count: int
+) -> List["ClusterProfile"]:
+    """Extend seed texts to target cluster count by creating variations."""
+    from models.schemas import ClusterProfile
+    
+    clusters: List[ClusterProfile] = []
+    base_weight = 1.0 / target_count
+    
+    # Use provided seeds first
+    for i, text in enumerate(seed_texts):
+        sentiment = 0.3 if i % 2 == 0 else -0.3
+        clusters.append(
+            ClusterProfile(
+                cluster_id=i,
+                label=f"view-{i + 1}",
+                weight=base_weight,
+                document_count=1,
+                key_arguments=[text],
+                keywords=text.split()[:5],
+                sentiment=sentiment,
+            )
+        )
+    
+    # Create variations for remaining slots
+    while len(clusters) < target_count:
+        idx = len(clusters)
+        base_text = seed_texts[idx % len(seed_texts)]
+        # Create a variation with different sentiment
+        variation_sentiment = -0.3 if idx % 2 == 0 else 0.3
+        clusters.append(
+            ClusterProfile(
+                cluster_id=idx,
+                label=f"view-{idx + 1}",
+                weight=base_weight,
+                document_count=1,
+                key_arguments=[f"Variation on: {base_text[:100]}"],
+                keywords=base_text.split()[:5],
+                sentiment=variation_sentiment,
+            )
+        )
+    
+    return clusters
+
+
+def _default_clusters(
+    topic: str, seed_texts: Optional[List[str]], count: int = 2
+) -> List["ClusterProfile"]:
+    """Create default clusters when no seed texts provided."""
+    from models.schemas import ClusterProfile
+
+    seed_text = seed_texts[0] if seed_texts else topic
+    clusters: List[ClusterProfile] = []
+    
+    # Create diverse default positions
+    positions = [
+        ("support", 0.5, f"{seed_text} - this position has significant merit and evidence."),
+        ("oppose", -0.5, f"{seed_text} - this position has notable risks and concerns."),
+        ("neutral", 0.0, f"{seed_text} - this position requires careful consideration of trade-offs."),
+        ("conditional-support", 0.3, f"{seed_text} - support with specific conditions and safeguards."),
+        ("conditional-oppose", -0.3, f"{seed_text} - oppose unless key concerns are addressed."),
+        ("skeptical", 0.1, f"{seed_text} - need more evidence before taking a position."),
+    ]
+    
+    for i in range(min(count, len(positions))):
+        label, sentiment, argument = positions[i]
+        clusters.append(
+            ClusterProfile(
+                cluster_id=i,
+                label=label,
+                weight=1.0 / count,
+                document_count=1,
+                key_arguments=[argument],
+                keywords=topic.split()[:3],
+                sentiment=sentiment,
+            )
+        )
+    
+    return clusters
+
+
+async def _create_agents_with_registry(
     topic: str,
-    seed_texts: Optional[List[str]],
+    clusters: List["ClusterProfile"],
     model: str,
     nodes: Optional[List[Dict[str, Any]]] = None,
     node_mapping: Optional[Dict[str, str]] = None,
-) -> list:
+) -> tuple:
     """Create debate agents, optionally distributed across multiple Ollama nodes.
 
-    When clustering engine (L1) is available, this will use
-    PersonaFactory.create_agents(clusters). For now, create
-    agents directly from seed texts or generate default opposing views.
+    Returns tuple of (agents, node_registry).
     """
-    from models.schemas import ClusterProfile
-
-    # Build synthetic clusters from seed_texts or create defaults
-    if seed_texts and len(seed_texts) >= 2:
-        clusters = _clusters_from_seeds(seed_texts)
-    else:
-        clusters = _default_clusters(topic, seed_texts)
-
     # Build NodeRegistry if multi-node config provided
     node_registry = None
     int_mapping = None
@@ -332,65 +519,7 @@ async def _create_agents(
     )
     agents = await factory.create_agents(clusters, use_llm_persona=False)
 
-    return agents
-
-
-def _clusters_from_seeds(seed_texts: List[str]) -> list:
-    """Build synthetic ClusterProfile list from user seed texts."""
-    from models.schemas import ClusterProfile
-
-    clusters: list[ClusterProfile] = []
-    weight = 1.0 / len(seed_texts)
-
-    for i, text in enumerate(seed_texts):
-        label = f"view-{i + 1}"
-        sentiment = 0.3 if i % 2 == 0 else -0.3
-
-        clusters.append(
-            ClusterProfile(
-                cluster_id=i,
-                label=label,
-                weight=weight,
-                document_count=1,
-                key_arguments=[text],
-                keywords=text.split()[:5],
-                sentiment=sentiment,
-            )
-        )
-
-    return clusters
-
-
-def _default_clusters(topic: str, seed_texts: Optional[List[str]]) -> list:
-    """Create default pro/con clusters when no seed texts provided."""
-    from models.schemas import ClusterProfile
-
-    seed_text = seed_texts[0] if seed_texts else topic
-
-    return [
-        ClusterProfile(
-            cluster_id=0,
-            label="support",
-            weight=0.5,
-            document_count=1,
-            key_arguments=[
-                f"{seed_text} - this position has significant merit and evidence."
-            ],
-            keywords=topic.split()[:3],
-            sentiment=0.5,
-        ),
-        ClusterProfile(
-            cluster_id=1,
-            label="oppose",
-            weight=0.5,
-            document_count=1,
-            key_arguments=[
-                f"{seed_text} - this position has notable risks and concerns."
-            ],
-            keywords=topic.split()[:3],
-            sentiment=-0.5,
-        ),
-    ]
+    return agents, node_registry
 
 
 def _create_moderator(model: str, agent_model: str, speech_trigger: int = 5) -> Any:
@@ -475,14 +604,50 @@ class _InlineModerator:
         return content
 
 
-async def _run_forum(engine: ForumEngine) -> Dict[str, Any]:
-    """Background task wrapper for running a forum debate."""
+async def _run_forum_with_swarm(
+    engine: ForumEngine,
+    clusters: List["ClusterProfile"],
+    enable_swarm: bool,
+    swarm_agent_count: int,
+    swarm_steps: int,
+) -> Dict[str, Any]:
+    """Run forum debate and optionally swarm simulation via pipeline module.
+
+    Delegates to forum.pipeline.run_full_pipeline when swarm is enabled.
+    Falls back to forum-only when swarm is disabled.
+    """
+    session_id = engine.session_id
+
     try:
-        result = await engine.run()
-        logger.info("Forum %s completed: %d posts", engine.session_id, len(engine.all_posts))
-        return result
+        if enable_swarm and clusters:
+            # Full pipeline: Forum → Swarm → Predictor
+            final_result = await run_full_pipeline(
+                topic=engine.config.topic,
+                clusters=clusters,
+                forum_engine=engine,
+                agent_count=swarm_agent_count,
+                num_steps=swarm_steps,
+                enable_predictor=True,
+            )
+        else:
+            # Forum only (backward compatible)
+            final_result = await engine.run()
+
+        # Cache in session
+        if session_id in active_forums:
+            active_forums[session_id]["final_result"] = final_result
+            active_forums[session_id]["status"] = "completed"
+
+        return final_result
+
     except Exception as e:
-        logger.exception("Forum %s failed: %s", engine.session_id, e)
+        logger.exception("Forum %s failed: %s", session_id, e)
         engine.status = "error"
         engine._error = str(e)
-        return engine._build_result()
+        result = engine._build_result()
+
+        if session_id in active_forums:
+            active_forums[session_id]["final_result"] = result
+            active_forums[session_id]["status"] = "error"
+
+        return result

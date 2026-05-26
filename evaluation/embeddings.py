@@ -22,10 +22,12 @@ class _FallbackEmbedder:
     def __init__(self) -> None:
         from sklearn.feature_extraction.text import TfidfVectorizer
 
+        # max_df=1.0 (비율 대신 정수 또는 1.0)로 설정하여
+        # 소수 문서(1-3개)에서 max_df < min_df 오류를 방지
         self._vectorizer = TfidfVectorizer(
             max_features=512,
             stop_words="english",
-            max_df=0.95,
+            max_df=1.0,
             min_df=1,
             sublinear_tf=True,
         )
@@ -91,9 +93,14 @@ class EmbeddingSimilarity:
     # ------------------------------------------------------------------
 
     def cosine_similarity(self, text_a: str, text_b: str) -> float:
-        """Calculate cosine similarity between two texts."""
-        emb_a = self.embedder.embed_single(text_a)
-        emb_b = self.embedder.embed_single(text_b)
+        """Calculate cosine similarity between two texts.
+
+        Both texts are embedded in a single call so they share the same
+        vocabulary / feature space -- avoids dimension mismatch when using
+        the TF-IDF fallback embedder.
+        """
+        embeddings = self.embedder.embed([text_a, text_b])
+        emb_a, emb_b = embeddings[0], embeddings[1]
         dot = np.dot(emb_a, emb_b)
         norm = np.linalg.norm(emb_a) * np.linalg.norm(emb_b)
         if norm == 0:
@@ -148,12 +155,21 @@ class EmbeddingSimilarity:
         if not argument.strip():
             return 0.0
 
-        # Calculate max similarity to any previous argument
+        # 모든 텍스트를 한 번에 임베딩하여 동일 vocabulary 보장
+        valid_prev = [p for p in previous_arguments if p.strip()]
+        if not valid_prev:
+            return 0.7
+
+        all_texts = [argument] + valid_prev
+        embeddings = self.embedder.embed(all_texts)
+        emb_arg = embeddings[0]
+        emb_prevs = embeddings[1:]
+
         max_sim = 0.0
-        for prev in previous_arguments:
-            if not prev.strip():
-                continue
-            sim = self.cosine_similarity(argument, prev)
+        for emb_p in emb_prevs:
+            dot = np.dot(emb_arg, emb_p)
+            norm = np.linalg.norm(emb_arg) * np.linalg.norm(emb_p)
+            sim = float(dot / norm) if norm > 0 else 0.0
             max_sim = max(max_sim, sim)
 
         # Invert: high similarity = low originality
@@ -175,12 +191,16 @@ class EmbeddingSimilarity:
         if not round_n_texts or not round_n_minus_1_texts:
             return False
 
-        # Compute mean embeddings for each round
-        emb_n = self.embedder.embed(round_n_texts)
-        emb_prev = self.embedder.embed(round_n_minus_1_texts)
+        # 두 라운드의 텍스트를 한 번에 임베딩하여 동일 vocabulary 보장
+        n_n = len(round_n_texts)
+        all_texts = round_n_texts + round_n_minus_1_texts
+        all_embeddings = self.embedder.embed(all_texts)
 
-        if emb_n.size == 0 or emb_prev.size == 0:
+        if all_embeddings.size == 0:
             return False
+
+        emb_n = all_embeddings[:n_n]
+        emb_prev = all_embeddings[n_n:]
 
         mean_n = np.mean(emb_n, axis=0)
         mean_prev = np.mean(emb_prev, axis=0)

@@ -10,22 +10,23 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture
-def client() -> TestClient:
+def client():
     """Create a TestClient for the FastAPI app."""
-    # Set required env vars before importing app
+    # Set required env vars and yield inside the patch context so that
+    # requests made during the test also see the patched environment.
     with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key-12345"}):
         from api.app import app
 
-        return TestClient(app)
+        yield TestClient(app)
 
 
 @pytest.fixture
-def client_no_key() -> TestClient:
+def client_no_key():
     """TestClient without API key set."""
     with patch.dict(os.environ, {"OPENROUTER_API_KEY": ""}, clear=False):
         from api.app import app
 
-        return TestClient(app)
+        yield TestClient(app)
 
 
 class TestHealthEndpoint:

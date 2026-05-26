@@ -64,3 +64,9 @@ async def rate_limit_dependency(request: Request) -> None:
     allowed, info = _rate_limiter.is_allowed(client_ip, client_ip)
     if not allowed:
         raise HTTPException(status_code=429, detail="Too many requests")
+    try:
+        yield
+    finally:
+        # 요청 처리 완료 후 lock 해제 -- 미해제 시 동일 client의
+        # 다음 요청이 즉시 429를 반환하는 버그 방지
+        _rate_limiter.release_lock(client_ip)

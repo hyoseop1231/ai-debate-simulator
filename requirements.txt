@@ -25,6 +25,4 @@ python-dotenv>=1.0.0
 # System Monitoring
 psutil>=5.9.0
 
-# Logging
-logging-extensions>=0.1.0; python_version < "0"
-# (logging은 stdlib이지만 구조화된 로깅용)
+# Logging (stdlib 내장 모듈 사용, 별도 패키지 불필요)
